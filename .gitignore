@@ -6,5 +6,4 @@ yotta_targets/
 .pxt/
 *.hex
 *.uf2
-.vscode/
 .DS_Store

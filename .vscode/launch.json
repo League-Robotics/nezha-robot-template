@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Open MakeCode Editor",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:3232",
+            "webRoot": "${workspaceFolder}",
+            "preLaunchTask": "Start MakeCode Server",
+            "runtimeArgs": ["--new-window"]
+        }
+    ]
+}
