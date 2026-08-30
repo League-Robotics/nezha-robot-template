@@ -1,5 +1,14 @@
 {
     "version": "1.0.0",
+    "scripts": {
+        "setup":       "npm install && npx pxt target microbit && npx pxt install",
+        "build":       "bash scripts/build.sh",
+        "build:cloud": "bash scripts/build.sh --cloud",
+        "deploy":      "bash scripts/deploy.sh",
+        "deploy:cloud":"bash scripts/deploy.sh --cloud",
+        "code":        "bash scripts/code.sh",
+        "clean":       "rm -rf built/ pxt_modules/ yotta_modules/ yotta_targets/ .pxt/ *.hex"
+    },
     "dependencies": {
         "pxt-microbit": "^9.1.1"
     },
