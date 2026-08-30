@@ -5,7 +5,8 @@
     "license": "MIT",
     "dependencies": {
         "core": "*",
-        "radio": "*"
+        "radio": "*",
+        "nezha-diffdrive": "github:League-Microbit/pxt-diff-drive"
     },
     "files": [
         "README.md",
@@ -15,9 +16,6 @@
     "testFiles": [
         "test.ts"
     ],
-    "extensionDependencies": {
-        "nezha-diffdrive": "github:League-Microbit/pxt-diff-drive"
-    },
     "supportedTargets": [
         "microbit"
     ],
