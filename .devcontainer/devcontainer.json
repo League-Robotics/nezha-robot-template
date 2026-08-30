@@ -1,14 +1,11 @@
-// .devcontainer/devcontainer.json
-// VS Code / GitHub Codespaces dev container for the Nezha robot template.
-// Pre-installs Docker, Node, pxt, and the yotta-compiler image so
-// you can build and flash micro:bit projects out of the box.
+// Dev container for Nezha robot development.
+// Pre-installs Node, PXT/MakeCode CLI, and Docker for local compilation.
+// On create: installs project deps + micro:bit target + extension deps
+// so IntelliSense and builds work immediately.
 {
     "name": "Nezha Robot (MakeCode + micro:bit)",
     "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
 
-    // Install Docker-in-Docker for local compilation.
-    // moby: false — typescript-node:20 is now Debian Trixie, which
-    // has no moby-cli package. Use upstream docker-ce instead.
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2": {
             "version": "latest",
@@ -16,17 +13,23 @@
         }
     },
 
-    // Environment for local builds
     "containerEnv": {
         "PXT_FORCE_LOCAL": "1",
         "PXT_COMPILE_SWITCHES": "csv---mbcodal"
     },
 
-    // Pre-pull the yotta-compiler image, tag it under the name PXT
-    // expects (pext/yotta:latest), then install project deps.
-    "postCreateCommand": "docker pull ghcr.io/league-microbit/yotta-compiler:latest && docker tag ghcr.io/league-microbit/yotta-compiler:latest pext/yotta:latest && npm run setup",
+    // Install project deps so IntelliSense types are available immediately.
+    // Docker pull is best-effort — Codespaces may not have Docker ready yet.
+    "postCreateCommand": "npm install && npx pxt target microbit && npx pxt install && (docker pull ghcr.io/league-microbit/yotta-compiler:latest && docker tag ghcr.io/league-microbit/yotta-compiler:latest pext/yotta:latest || true)",
 
-    // VS Code extensions
+    "forwardPorts": [3232],
+    "portsAttributes": {
+        "3232": {
+            "label": "MakeCode Editor",
+            "onAutoForward": "notify"
+        }
+    },
+
     "customizations": {
         "vscode": {
             "extensions": [
@@ -35,7 +38,6 @@
             "settings": {
                 "editor.formatOnSave": true,
                 "files.exclude": {
-                    "pxt_modules": true,
                     "yotta_modules": true,
                     "yotta_targets": true,
                     "node_modules": true,
@@ -43,19 +45,6 @@
                     "built": true
                 }
             }
-        }
-    },
-
-    // Mount the workspace so edits are immediate
-    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-    "workspaceFolder": "/workspace",
-
-    // Forward port 3232 for the local MakeCode editor
-    "forwardPorts": [3232],
-    "portsAttributes": {
-        "3232": {
-            "label": "MakeCode Editor",
-            "onAutoForward": "notify"
         }
     }
 }

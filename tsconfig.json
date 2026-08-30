@@ -1,9 +1,21 @@
+// tsconfig.json — TypeScript configuration for VS Code IntelliSense.
+//
+// Includes only the project's own source files plus a compact ambient
+// declarations file (pxt-globals.d.ts) that provides the type surface
+// for the micro:bit runtime and DiffDrive extension.
+//
+// PXT has its own build pipeline; this file is for editor tooling only.
 {
-    "compilerOptions": {
-        "target": "ES5",
-        "noImplicitAny": true,
-        "outDir": "built",
-        "rootDir": "."
-    },
-    "exclude": ["pxt_modules/**/*test.ts"]
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "none",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": [
+    "pxt-globals.d.ts",
+    "main.ts",
+    "test.ts"
+  ]
 }
