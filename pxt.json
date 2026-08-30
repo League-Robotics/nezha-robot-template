@@ -1,0 +1,33 @@
+{
+    "name": "nezha-robot-template",
+    "version": "1.0.0",
+    "description": "MakeCode project template for driving the Nezha robot with the DiffDrive extension. Start here to write JavaScript programs that move, turn, and navigate.",
+    "license": "MIT",
+    "dependencies": {
+        "core": "*",
+        "radio": "*"
+    },
+    "files": [
+        "README.md",
+        "main.ts",
+        "main.blocks"
+    ],
+    "testFiles": [
+        "test.ts"
+    ],
+    "extensionDependencies": {
+        "nezha-diffdrive": "github:League-Microbit/pxt-diff-drive"
+    },
+    "supportedTargets": [
+        "microbit"
+    ],
+    "preferredEditor": "tsprj",
+    "yotta": {
+        "config": {
+            "microbit_radio_max_packet_size": 250
+        }
+    },
+    "disablesVariants": [
+        "mbdal"
+    ]
+}

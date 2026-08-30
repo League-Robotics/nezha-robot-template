@@ -1,0 +1,32 @@
+# Build check: compiles the template project (main.ts + test.ts
+# in testFiles) through MakeCode's cloud compile service to verify
+# the project builds correctly.
+#
+# V2-only — this template's DiffDrive extension only supports
+# the micro:bit V2 (mbcodal) variant.
+name: MakeCode
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install pxt and the micro:bit target
+        run: |
+          npm install -g pxt
+          pxt target microbit
+      - name: Build
+        env:
+          PXT_COMPILE_SWITCHES: csv-mbcodal
+        run: |
+          pxt install
+          pxt build --cloudbuild
