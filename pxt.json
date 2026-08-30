@@ -6,7 +6,8 @@
     "dependencies": {
         "core": "*",
         "radio": "*",
-        "nezha-diffdrive": "github:League-Microbit/pxt-diff-drive"
+        "nezha-diffdrive": "github:League-Microbit/pxt-diff-drive",
+        "microphone": "*"
     },
     "files": [
         "README.md",

@@ -26,7 +26,7 @@ jobs:
           pxt target microbit
       - name: Build
         env:
-          PXT_COMPILE_SWITCHES: csv-mbcodal
+          PXT_COMPILE_SWITCHES: csv---mbcodal
         run: |
           pxt install
           pxt build --cloudbuild
