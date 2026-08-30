@@ -6,11 +6,13 @@
     "name": "Nezha Robot (MakeCode + micro:bit)",
     "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
 
-    // Install Docker-in-Docker for local compilation
+    // Install Docker-in-Docker for local compilation.
+    // moby: false — typescript-node:20 is now Debian Trixie, which
+    // has no moby-cli package. Use upstream docker-ce instead.
     "features": {
         "ghcr.io/devcontainers/features/docker-in-docker:2": {
             "version": "latest",
-            "moby": true
+            "moby": false
         }
     },
 
@@ -20,10 +22,11 @@
         "PXT_COMPILE_SWITCHES": "csv---mbcodal"
     },
 
-    // Pre-pull the yotta-compiler image so the first build is fast
-    "postCreateCommand": "docker pull ghcr.io/league-microbit/yotta-compiler:latest && npm install && npx pxt target microbit && npx pxt install",
+    // Pre-pull the yotta-compiler image, tag it under the name PXT
+    // expects (pext/yotta:latest), then install project deps.
+    "postCreateCommand": "docker pull ghcr.io/league-microbit/yotta-compiler:latest && docker tag ghcr.io/league-microbit/yotta-compiler:latest pext/yotta:latest && npm run setup",
 
-    // VS Code extensions to make the editor comfortable
+    // VS Code extensions
     "customizations": {
         "vscode": {
             "extensions": [
