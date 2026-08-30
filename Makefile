@@ -20,6 +20,8 @@ setup:
 ## docker-pull — pre-pull the yotta-compiler image for local builds
 docker-pull:
 	docker pull ghcr.io/league-microbit/yotta-compiler:latest
+	docker tag ghcr.io/league-microbit/yotta-compiler:latest pext/yotta:latest
+	@echo "Image cached as pext/yotta:latest — local builds will use it"
 
 ## build — compile locally (uses yotta-compiler Docker image)
 build:

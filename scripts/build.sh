@@ -19,11 +19,15 @@ case "$MODE" in
         ;;
     --local|"")
         echo "=== Local build (yotta-compiler Docker image) ==="
-        # Pull the image if not cached
+        # PXT's codal build engine runs `docker run ... pext/yotta:latest`.
+        # Pull our image and tag it under the name PXT expects.
         if ! docker image inspect ghcr.io/league-microbit/yotta-compiler:latest &>/dev/null; then
             echo "Pulling yotta-compiler image …"
             docker pull ghcr.io/league-microbit/yotta-compiler:latest
         fi
+        docker tag ghcr.io/league-microbit/yotta-compiler:latest pext/yotta:latest
+        echo "Image tagged as pext/yotta:latest (PXT will find it cached)"
+
         env PXT_FORCE_LOCAL=1 $FLAGS npx pxt build
         ;;
     *)
