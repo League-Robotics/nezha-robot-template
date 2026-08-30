@@ -18,9 +18,10 @@
         "PXT_COMPILE_SWITCHES": "csv---mbcodal"
     },
 
-    // Install project deps so IntelliSense types are available immediately.
-    // Docker pull is best-effort — Codespaces may not have Docker ready yet.
-    "postCreateCommand": "npm install && npx pxt target microbit && npx pxt install && (docker pull ghcr.io/league-microbit/yotta-compiler:latest && docker tag ghcr.io/league-microbit/yotta-compiler:latest pext/yotta:latest || true)",
+    // pxt is a devDependency — npm install puts it in node_modules,
+    // so npx uses the local copy without any interactive prompt.
+    // Docker pull is best-effort (Codespaces may not have Docker ready).
+    "postCreateCommand": "npm install --no-audit --no-fund && npx --yes pxt target microbit && npx --yes pxt install && (docker pull ghcr.io/league-microbit/yotta-compiler:latest && docker tag ghcr.io/league-microbit/yotta-compiler:latest pext/yotta:latest || true)",
 
     "forwardPorts": [3232],
     "portsAttributes": {

@@ -13,9 +13,9 @@ PXT_FLAGS := PXT_COMPILE_SWITCHES=csv---mbcodal
 
 ## setup — install Node deps, pxt-microbit target, and extension deps
 setup:
-	npm install
-	npx pxt target microbit
-	npx pxt install
+	npm install --no-audit --no-fund
+	npx --yes pxt target microbit
+	npx --yes pxt install
 
 ## docker-pull — pre-pull the yotta-compiler image for local builds
 docker-pull:
@@ -25,11 +25,11 @@ docker-pull:
 
 ## build — compile locally (uses yotta-compiler Docker image)
 build:
-	PXT_FORCE_LOCAL=1 $(PXT_FLAGS) npx pxt build
+	PXT_FORCE_LOCAL=1 $(PXT_FLAGS) npx --yes pxt build
 
 ## build-cloud — compile via MakeCode cloud service (no Docker needed)
 build-cloud:
-	$(PXT_FLAGS) npx pxt build --cloudbuild
+	$(PXT_FLAGS) npx --yes pxt build --cloudbuild
 
 ## deploy — build locally, then flash to micro:bit
 deploy: build
@@ -47,7 +47,7 @@ flash:
 ## code — start local MakeCode editor (http://localhost:3232)
 code:
 	@echo "Starting MakeCode at http://localhost:3232 …"
-	npx pxt serve --localbuild --browser --noSerial --hostname 0.0.0.0
+	npx --yes pxt serve --localbuild --browser --noSerial --hostname 0.0.0.0
 
 ## clean — remove build artifacts
 clean:

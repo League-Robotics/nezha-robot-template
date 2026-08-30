@@ -1,5 +1,41 @@
 {
-    "compileService": {
-        "dockerImage": "ghcr.io/league-microbit/yotta-compiler:latest"
+  "compileService": {
+    "yottaTarget": "bbc-microbit-classic-gcc@https://github.com/lancaster-university/yotta-target-bbc-microbit-classic-gcc",
+    "yottaCorePackage": "microbit",
+    "githubCorePackage": "lancaster-university/microbit",
+    "gittag": "v2.2.0-rc6",
+    "serviceId": "microbit",
+    "dockerImage": "ghcr.io/league-microbit/yotta-compiler:latest",
+    "yottaBinary": "pxt-microbit-app-combined.hex"
+  },
+  "variants": {
+    "mbdal": {
+      "compile": {},
+      "compileService": {}
+    },
+    "mbcodal": {
+      "compile": {
+        "flashCodeAlign": 4096,
+        "flashUsableEnd": 471040,
+        "flashEnd": 524288
+      },
+      "compileService": {
+        "buildEngine": "codal",
+        "codalTarget": {
+          "name": "codal-microbit-v2",
+          "url": "https://github.com/lancaster-university/codal-microbit-v2",
+          "branch": "v0.3.5",
+          "type": "git"
+        },
+        "codalBinary": "MICROBIT",
+        "githubCorePackage": "lancaster-university/microbit-v2-samples",
+        "gittag": "v0.2.13",
+        "serviceId": "mbcodal2",
+        "dockerImage": "ghcr.io/league-microbit/yotta-compiler:latest",
+        "yottaConfigCompatibility": true
+      }
     }
+  },
+  "multiVariants": ["mbdal", "mbcodal"],
+  "alwaysMultiVariant": true
 }

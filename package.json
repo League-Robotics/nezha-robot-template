@@ -1,7 +1,7 @@
 {
     "version": "1.0.0",
     "scripts": {
-        "setup":       "npm install && npx pxt target microbit && npx pxt install",
+        "setup":       "npm install --no-audit --no-fund && npx --yes pxt target microbit && npx --yes pxt install",
         "build":       "bash scripts/build.sh",
         "build:cloud": "bash scripts/build.sh --cloud",
         "deploy":      "bash scripts/deploy.sh",
@@ -13,6 +13,7 @@
         "pxt-microbit": "^9.1.1"
     },
     "devDependencies": {
+        "pxt": "^0.5.1",
         "typescript": "^5.9.3"
     }
 }
