@@ -11,3 +11,7 @@ yotta_targets/
 # MakeCode local editor state (written by `npm run code`)
 .header.json
 .simstate.json
+
+targetconfig.json
+projects/
+_history

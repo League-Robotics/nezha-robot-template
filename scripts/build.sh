@@ -27,6 +27,13 @@ done
 
 cd "$(dirname "$0")/.."
 
+# Re-apply local extension hot-fixes. pxt_modules/ is a dependency cache that
+# `pxt install` refetches and overwrites, so patched sources do not survive on
+# their own -- this runs on every build to put them back. Idempotent.
+# A failure here is NOT fatal: it prints loudly and the build continues with
+# unpatched sources, so a version bump upstream cannot silently block builds.
+bash scripts/patch-extension.sh || echo "WARNING: extension patches not applied — see above." >&2
+
 HOST_ARCH=$(docker info --format '{{.Architecture}}' 2>/dev/null || uname -m)
 case "$HOST_ARCH" in
     aarch64|arm64) HOST_ARCH=arm64 ;;

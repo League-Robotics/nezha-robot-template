@@ -1,40 +1,59 @@
-// main.ts — Your Nezha robot program starts here!
-//
-// This template includes the DiffDrive extension, which gives you
-// closed-loop control of your Nezha robot's two-wheel drive.
-// The robot drives straight, turns accurately, and knows its position.
-//
-// Blocks appear under the "DiffDrive" category. Everything is in
-// centimeters, centimeters/second, degrees, and degrees/second.
-//
-// Hardware setup:
-//   - micro:bit V2 on the ElecFreaks Nezha brick
-//   - Left wheel on M2, right wheel on M1
-//   - Optional: OTOS optical tracking sensor on I²C
-
-// ── Drive a 30 cm square on button A ──────────────────────────
-input.onButtonPressed(Button.A, function () {
+/**
+ * ── Nezha robot — written live in the MakeCode editor ─────────
+ * 
+ * A course the robot drives, reachable two ways: press button A, or
+ * 
+ * send RUN:a from the bench host. RUN:a does NOT call the function
+ * 
+ * directly — it raises the same MessageBus event a real button press
+ * 
+ * raises, so the button path itself is what gets exercised.
+ */
+diffDrive.onRun("ping", function (arg) {
+    diffDrive.emitLine("pong heading=" + Math.round(diffDrive.heading()))
+})
+function driveCourse () {
+    diffDrive.emitLine("course start")
+basic.showIcon(IconNames.Diamond)
     diffDrive.resetPose()
-    for (let i = 0; i < 4; i++) {
-        diffDrive.move(30, 0)   // 30 cm straight
-        diffDrive.move(0, 90)   // pivot 90° counter-clockwise
-    }
-    basic.showNumber(Math.round(diffDrive.heading()))
-})
-
-// ── Show live position while driving on button B ──────────────
-input.onButtonPressed(Button.B, function () {
-    diffDrive.whileMoving(30, 0, function (x: number, y: number, heading: number) {
-        led.plotBarGraph(diffDrive.moveProgress() * 100, 100)
-        if (input.buttonIsPressed(Button.AB)) {
-            diffDrive.stopMove()
-        }
-    })
+    diffDrive.move(20, 0)
+    diffDrive.move(0, 90)
+    diffDrive.move(20, 0)
+    diffDrive.move(0, -90)
+    diffDrive.move(15, 0)
     basic.clearScreen()
+    diffDrive.emitLine("course done x=" + Math.round(diffDrive.poseX())
+        + " y=" + Math.round(diffDrive.poseY())
+        + " heading=" + Math.round(diffDrive.heading()))
+}
+// ── Buttons ───────────────────────────────────────────────────
+input.onButtonPressed(Button.A, function () {
+    diffDrive.emitLine("btn A")
+driveCourse()
 })
-
-// ── Emergency stop on A+B ─────────────────────────────────────
+diffDrive.onRunCommand(function (name, arg) {
+    diffDrive.emitLine("run rx name=" + name + " arg=" + arg)
+})
+diffDrive.onRun("stop", function (arg) {
+    haltAll()
+})
 input.onButtonPressed(Button.AB, function () {
-    diffDrive.stop()
-    basic.showIcon(IconNames.No)
+    diffDrive.emitLine("btn AB")
+haltAll()
 })
+function haltAll () {
+    diffDrive.emitLine("halt")
+diffDrive.stop()
+    basic.showIcon(IconNames.No)
+}
+// ── Remote triggers ───────────────────────────────────────────
+// RUN:a -> raise the real button-A event -> onButtonPressed fires.
+diffDrive.onRun("a", function (arg) {
+    diffDrive.emitLine("raise A")
+control.raiseEvent(
+    EventBusSource.MICROBIT_ID_BUTTON_A,
+    EventBusValue.MICROBIT_BUTTON_EVT_CLICK
+    )
+})
+diffDrive.emitLine("boot course-program ready")
+basic.showIcon(IconNames.Ghost)

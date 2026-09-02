@@ -6,13 +6,14 @@
     "dependencies": {
         "core": "*",
         "radio": "*",
-        "nezha-diffdrive": "github:League-Microbit/pxt-diff-drive#v1.20260829.1",
+        "nezha-diffdrive": "github:League-Robotics/pxt-nezha-diffdrive#v0.20260902.1",
         "microphone": "*"
     },
     "files": [
         "README.md",
+        "main.blocks",
         "main.ts",
-        "main.blocks"
+        "main.py"
     ],
     "testFiles": [
         "test.ts"
@@ -20,7 +21,7 @@
     "supportedTargets": [
         "microbit"
     ],
-    "preferredEditor": "tsprj",
+    "preferredEditor": "blocksprj",
     "yotta": {
         "config": {
             "microbit_radio_max_packet_size": 250,

@@ -1,0 +1,37 @@
+--- a/src/comms/protocol.h
++++ b/src/comms/protocol.h
+@@ -157,6 +157,15 @@
+   // and runText() is const to its callers.
+   mutable RunQueue<kRunSlots, static_cast<int>(kRunTextBytes)> runQueue_;
+ 
++  // Stable copy handed back by runText(). REQUIRED, not a convenience:
++  // RunQueue::release() zeroes slots_[slot][0], so the pointer at()
++  // returns is an empty string by the time release() has run. runText()
++  // must copy the text out BEFORE releasing and return this instead --
++  // returning at()'s pointer hands the caller a buffer that release()
++  // has already truncated. Sized like a slot; mutable because runText()
++  // is const.
++  mutable char runTextScratch_[kRunTextBytes] = {};
++
+   // RUN repeat suppression -- see handleRun's own comment. Hosts repeat
+   // commands to survive the single-slot inbound buffer, and without
+   // this a repeated RUN runs the test once per copy. Compared on the
+--- a/src/comms/protocol.cpp
++++ b/src/comms/protocol.cpp
+@@ -251,9 +251,15 @@
+   // completion, so this is the only place occupancy can honestly be
+   // closed; the text is copied out by the caller before the next
+   // enqueue can reach this slot, because both run on this same fiber.
++  // Copy BEFORE releasing. release() sets slots_[slot][0] = '\0', so
++  // returning at()'s pointer after release() hands the caller "" every
++  // time -- which silently kills ALL cleartext RUN: dispatch, because
++  // blocks/run.ts bails on `if (text.length == 0) return`.
+   const char* text = runQueue_.at(slot - 1);
++  std::strncpy(runTextScratch_, text, kRunTextBytes - 1);
++  runTextScratch_[kRunTextBytes - 1] = '\0';
+   runQueue_.release(slot - 1);
+-  return text;
++  return runTextScratch_;
+ }
+ 
+ uint32_t Protocol::runDropCount() const { return runQueue_.dropped(); }
