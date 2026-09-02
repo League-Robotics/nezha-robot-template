@@ -5,9 +5,15 @@
 // for the micro:bit runtime and DiffDrive extension.
 //
 // PXT has its own build pipeline; this file is for editor tooling only.
+//
+// "target" must stay at es2017 or lower. `pxt serve` reads this file with
+// PXT's own bundled (old) TypeScript during its simshim step, and anything
+// newer fails the whole server startup with:
+//   error TS6046: Argument for '--target' option must be: 'es3', 'es5',
+//   'es6', 'es2015', 'es2016', 'es2017', 'esnext'.
 {
   "compilerOptions": {
-    "target": "es2020",
+    "target": "es2017",
     "module": "none",
     "noEmit": true,
     "skipLibCheck": true,

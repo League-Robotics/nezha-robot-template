@@ -1,57 +1,62 @@
 # nezha-robot-template — Makefile
 #
-# Drives local compilation, flashing, and the MakeCode editor.
+# Thin wrapper over the npm scripts in package.json, which in turn call
+# the shell scripts in scripts/. `make X` and `npm run X` do the same thing;
+# scripts/ holds the single implementation of each.
+#
 # Everything runs inside the repo — no global state touched.
 
 SHELL := /bin/bash
 
-OUT       := built/binary.hex
-MICROBIT  := /Volumes/MICROBIT
-PXT_FLAGS := PXT_COMPILE_SWITCHES=csv---mbcodal
+# Overridable: make deploy MICROBIT=/Volumes/OTHER, make code PORT=8080
+MICROBIT ?= /Volumes/MICROBIT
+PORT     ?= 3232
 
-.PHONY: setup build build-cloud deploy flash code clean docker-pull help
+export MICROBIT
+export PORT
+
+.PHONY: setup build build-cloud deploy deploy-cloud flash code update clean docker-pull help
 
 ## setup — install Node deps, pxt-microbit target, and extension deps
 setup:
-	npm install --no-audit --no-fund
-	npx --yes pxt target microbit
-	npx --yes pxt install
+	npm run setup
 
 ## docker-pull — pre-pull the yotta-compiler image for local builds
 docker-pull:
-	docker pull ghcr.io/league-microbit/yotta-compiler:latest
-	docker tag ghcr.io/league-microbit/yotta-compiler:latest pext/yotta:latest
+	npm run docker:pull
 	@echo "Image cached as pext/yotta:latest — local builds will use it"
 
 ## build — compile locally (uses yotta-compiler Docker image)
 build:
-	PXT_FORCE_LOCAL=1 $(PXT_FLAGS) npx --yes pxt build
+	npm run build
 
 ## build-cloud — compile via MakeCode cloud service (no Docker needed)
 build-cloud:
-	$(PXT_FLAGS) npx --yes pxt build --cloudbuild
+	npm run build:cloud
 
 ## deploy — build locally, then flash to micro:bit
-deploy: build
-	@test -d "$(MICROBIT)" || { echo "ERROR: $(MICROBIT) not mounted" >&2; exit 1; }
-	cp $(OUT) $(MICROBIT)/
-	@echo "Flashed to $(MICROBIT)"
+deploy:
+	npm run deploy
+
+## deploy-cloud — cloud build, then flash to micro:bit
+deploy-cloud:
+	npm run deploy:cloud
 
 ## flash — copy a previously-built hex to micro:bit
 flash:
-	@test -f $(OUT) || { echo "ERROR: $(OUT) not found — run 'make build' first" >&2; exit 1; }
-	@test -d "$(MICROBIT)" || { echo "ERROR: $(MICROBIT) not mounted" >&2; exit 1; }
-	cp $(OUT) $(MICROBIT)/
-	@echo "Flashed to $(MICROBIT)"
+	npm run flash
 
 ## code — start local MakeCode editor (http://localhost:3232)
 code:
-	@echo "Starting MakeCode at http://localhost:3232 …"
-	npx --yes pxt serve --localbuild --browser --noSerial --hostname 0.0.0.0
+	npm run code
+
+## update — pin nezha-diffdrive to the latest GitHub release, reinstall, rebuild
+update:
+	npm run update
 
 ## clean — remove build artifacts
 clean:
-	rm -rf built/ pxt_modules/ yotta_modules/ yotta_targets/ .pxt/ *.hex
+	npm run clean
 
 ## help — show this help
 help:

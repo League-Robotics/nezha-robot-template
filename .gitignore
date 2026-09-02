@@ -7,3 +7,7 @@ yotta_targets/
 *.hex
 *.uf2
 .DS_Store
+
+# MakeCode local editor state (written by `npm run code`)
+.header.json
+.simstate.json

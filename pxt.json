@@ -6,7 +6,7 @@
     "dependencies": {
         "core": "*",
         "radio": "*",
-        "nezha-diffdrive": "github:League-Microbit/pxt-diff-drive",
+        "nezha-diffdrive": "github:League-Microbit/pxt-diff-drive#v1.20260829.1",
         "microphone": "*"
     },
     "files": [
@@ -23,7 +23,8 @@
     "preferredEditor": "tsprj",
     "yotta": {
         "config": {
-            "microbit_radio_max_packet_size": 250
+            "microbit_radio_max_packet_size": 250,
+            "device_ble": 0
         }
     },
     "disablesVariants": [
