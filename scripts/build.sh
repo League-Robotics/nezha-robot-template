@@ -27,12 +27,13 @@ done
 
 cd "$(dirname "$0")/.."
 
-# Re-apply local extension hot-fixes. pxt_modules/ is a dependency cache that
-# `pxt install` refetches and overwrites, so patched sources do not survive on
-# their own -- this runs on every build to put them back. Idempotent.
-# A failure here is NOT fatal: it prints loudly and the build continues with
-# unpatched sources, so a version bump upstream cannot silently block builds.
-bash scripts/patch-extension.sh || echo "WARNING: extension patches not applied — see above." >&2
+# test/secrets.ts holds the WiFi credentials and is gitignored, but pxt.json
+# lists it -- a missing file there fails the build outright. Seed it from the
+# tracked template so a fresh clone builds, with an empty password.
+if [ ! -f test/secrets.ts ]; then
+    cp test/secrets.example.ts test/secrets.ts
+    echo "Created test/secrets.ts from the template — set WIFI_PASSWORD in it."
+fi
 
 HOST_ARCH=$(docker info --format '{{.Architecture}}' 2>/dev/null || uname -m)
 case "$HOST_ARCH" in

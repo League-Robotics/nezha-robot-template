@@ -10,5 +10,17 @@
     "role": "NEZHA2",
     "serial": "2175407711",
     "uid": "9906360200052820049d38a46da36a83000000006e052820"
+  },
+  "99063602000528203b43773cab0210ea000000006e052820": {
+    "announcement": "device NEZHA2 robot tigez 3527777815",
+    "board_name": "tigez",
+    "common_name": "robot",
+    "device_id": 3527777815,
+    "device_name": "tigez",
+    "enum": 2,
+    "port": "/dev/cu.usbmodem2121102",
+    "role": "NEZHA2",
+    "serial": "3527777815",
+    "uid": "99063602000528203b43773cab0210ea000000006e052820"
   }
 }

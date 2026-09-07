@@ -4,11 +4,15 @@
 #
 # V2-only — this template's DiffDrive extension only supports
 # the micro:bit V2 (mbcodal) variant.
+#
+# master is excluded: release.yml runs the same cloud build there and
+# publishes the hex, so building it twice would just burn compile-service
+# time for the same answer.
 name: MakeCode
 
 on:
   push:
-    branches: ['**']
+    branches-ignore: [master]
   pull_request:
   workflow_dispatch:
 

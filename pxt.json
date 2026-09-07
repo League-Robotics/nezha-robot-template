@@ -11,9 +11,11 @@
     },
     "files": [
         "README.md",
+        "test/secrets.ts",
         "test/support.ts",
         "test/square.ts",
         "test/circle.ts",
+        "test/calibratex.ts",
         "test/spin.ts",
         "test/linetrack.ts",
         "test/obstacle1.ts",

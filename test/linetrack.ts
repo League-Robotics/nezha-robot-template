@@ -20,7 +20,7 @@ namespace linetrack {
     const DEFAULT_SPEED = 25
     const DEFAULT_KP = 120
 
-    function lineBits(): number {
+    export function lineBits(): number {
         pins.i2cWriteNumber(0x1a, 4, NumberFormat.Int8LE)
         return pins.i2cReadNumber(0x1a, NumberFormat.UInt8LE, false) & 0x0f
     }
@@ -37,34 +37,44 @@ namespace linetrack {
 
     let aborted = false
 
-    // driveTwist() REPLACES the previous demand under a lease, so each pass
-    // supersedes the last rather than queueing. driveTick() paces the loop at
-    // the drive's ~24 ms cadence and its watchdog neutralises the wheels
-    // within ~150 ms if the loop ever stops ticking -- so breaking out is safe.
+    // whileDriving() owns the tick loop: it issues the opening demand, calls
+    // this body once per ~24 ms control cycle, and runs _endMove() on the way
+    // out. driveTwist() REPLACES the previous demand under a lease rather than
+    // queueing, so re-issuing it every pass is how the body steers.
+    //
+    // A continuous drive has no finish line, so the four ways this run can end
+    // -- abort, time limit, the AB button, or the line lost too long -- all
+    // exit by calling stop(). The next tick then returns false and the loop
+    // unwinds. That is whileDriving()'s documented "give the body a way out".
     export function follow(speed: number, maxS: number, kp: number) {
         aborted = false
         let lastErr = 0
         let lostAt = -1
         const t0 = control.millis()
-        diffDrive.driveTwist(speed, 0)
-        while (diffDrive.driveTick()) {
-            if (aborted) break
-            if (control.millis() - t0 > maxS * 1000) break
-            if (input.buttonIsPressed(Button.AB)) break
+        diffDrive.whileDriving(speed, 0, function (x, y, heading) {
+            if (aborted
+                || control.millis() - t0 > maxS * 1000
+                || input.buttonIsPressed(Button.AB)) {
+                diffDrive.stop()
+                return
+            }
             const err = lineError(lineBits())
             if (err == 999) {
                 // Search by ROTATING IN PLACE. Creeping forward while blind is
                 // how a robot drives itself off the mat.
-                if (lostAt < 0) lostAt = control.millis()
-                else if (control.millis() - lostAt > 1500) break
+                if (lostAt < 0) {
+                    lostAt = control.millis()
+                } else if (control.millis() - lostAt > 1500) {
+                    diffDrive.stop()
+                    return
+                }
                 diffDrive.driveTwist(0, lastErr >= 0 ? 90 : -90)
             } else {
                 lostAt = -1
                 lastErr = err
                 diffDrive.driveTwist(speed, kp * err)
             }
-        }
-        diffDrive.stopMove()
+        })
         diffDrive.emitLine("LINE:end t=" + (control.millis() - t0) + "ms")
     }
 

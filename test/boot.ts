@@ -16,27 +16,45 @@
 // and it cannot be undone without a restart. Channel 55 / group 114 is what
 // this fleet's relay listens on; change it and the robot drops off the relay
 // it is assigned to.
-// diffDrive.setupRadio(55, 114)
+diffDrive.setupRadio(55, 114)
 
 //radio.setGroup(11)
 //let channel = "J"
 //radio.setFrequencyBand(parseInt(channel, 36) + 10)
 
-// The wire protocol moves off the radio and onto the Planet X WiFi module
-// (RJ11 jack J1), answering the same commands on UDP 7654 and advertising as
-// "<name> robot link" over mDNS. Leaving the radio above to MakeCode.
+// WiFi is OFF, and cannot be turned on from this project yet.
 //
-// This stays OFF until the build carries WiFi credentials: the extension ships
-// kWifiSsid/kWifiPassword empty on purpose, an empty SSID is WifiLink's own
-// "disabled" sentinel, and only tools/make_deploy.py fills them in. Calling it
-// on a build without them is a no-op, not an error.
-diffDrive.enableWifiLink()
+// The wire protocol is meant to move off the radio and onto the Planet X WiFi
+// module (RJ11 jack J1), answering the same commands on UDP 7654 and
+// advertising as "<name> robot link" over mDNS. It can't, because the stock
+// extension has no way to accept credentials from a program: it ships
+// kWifiSsid/kWifiPassword empty on purpose (an empty SSID is WifiLink's own
+// "disabled" sentinel), and the only thing that fills them in is its own
+// tools/make_deploy.py -- which this project's build path never runs.
+// enableWifiLink() on such a build is a silent no-op, so calling it would
+// only be misleading.
+//
+// We carried a local patch adding setWifiCredentials() for exactly this, and
+// dropped it: an out-of-tree patch over pxt_modules/ is a dependency cache
+// this repo does not control, and it broke quietly the moment upstream moved.
+// The capability is tracked upstream as setupWifi(ssid, password) in
+// pxt-nezha-diffdrive: clasi/issues/wifi-credentials-are-set-in-code-from-
+// the-project-s-own-secrets-ts.md.
+//
+// TO RESTORE, once the extension ships setupWifi() and pxt.json points at a
+// release carrying it -- two lines, and nothing else changes. WIFI_SSID and
+// WIFI_PASSWORD are already waiting in test/secrets.ts (gitignored; a fresh
+// clone gets a copy of test/secrets.example.ts, made by scripts/build.sh):
+//
+//     diffDrive.setupWifi(WIFI_SSID, WIFI_PASSWORD)
+//
+// Until then the robot answers on the radio configured above.
 
 // One line per thing a bench operator would otherwise have to read the source
 // for, so `mbdeploy connect` shows it at boot.
 diffDrive.emitLine("boot tests ready")
 diffDrive.emitLine("boot verbs: square circle spin[:secs] line sense"
-    + " push:<cm> turn:<deg> speed:<cm/s> trace:0|1 counters clear diag")
+    + " calx push:<cm> turn:<deg> speed:<cm/s> trace:0|1 counters clear diag")
 diffDrive.emitLine("boot buttons: A=pick program  B=run it")
 
 
@@ -67,10 +85,17 @@ const PROGRAM_PICTURES = [
         # . . . #
         # . . . #
         # # # # #
+        `),
+    images.createImage(`
+        # . . . #
+        . # . # .
+        . . # . .
+        . # . # .
+        # . . . #
         `)
 ]
-const PROGRAM_RUNS: (() => void)[] = [driveCircle, driveSquare]
-const PROGRAM_NAMES = ["circle", "square"]
+const PROGRAM_RUNS: (() => void)[] = [driveCircle, driveSquare, calibrateX]
+const PROGRAM_NAMES = ["circle", "square", "calibrate-x"]
 
 // -1 is "nothing picked yet", so the first A press lands on the circle.
 let programIndex = -1

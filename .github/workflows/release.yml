@@ -1,0 +1,125 @@
+# Release: builds the project through MakeCode's cloud compile service and
+# publishes the resulting .hex as a GitHub Release, so the firmware can be
+# flashed from anywhere without a local toolchain.
+#
+# Triggers
+#   push to master  -> builds and cuts a dated release, v0.YYYYMMDD.N
+#   push of a v* tag -> builds and releases under that exact tag
+#   manual dispatch  -> same as a master push
+#
+# The .hex is also uploaded as a workflow artifact on every run, so a failed
+# release step still leaves you something to download.
+#
+# V2-only — the DiffDrive extension only supports the micro:bit V2 (mbcodal)
+# variant, which is what PXT_COMPILE_SWITCHES selects.
+name: Release
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+# gh release create needs write access to the repo's contents.
+permissions:
+  contents: write
+
+# Two releases racing for the same dated tag would collide on the version
+# probe below, so serialize them.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history + tags: the build stamps the commit, and the version
+          # probe needs to see tags that already exist.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # npm ci pins pxt and pxt-microbit to package-lock.json, so a release
+      # built today and one built next month use the same compiler.
+      - name: Install dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          npx pxt target microbit
+          npx pxt install
+
+      # build.sh seeds test/secrets.ts from test/secrets.example.ts. Nothing
+      # reads those constants today (WiFi is off — see test/boot.ts), but
+      # pxt.json lists the file, so the build needs it to exist. Real
+      # credentials must never be set here: a public release artifact would
+      # carry a recoverable password.
+      - name: Build
+        run: npm run build:cloud
+
+      - name: Determine version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+              TAG="$GITHUB_REF_NAME"
+          else
+              # Same scheme the DiffDrive extension uses: v0.<UTC date>.<n>,
+              # where n counts releases already cut today.
+              DATE="$(date -u +%Y%m%d)"
+              N=1
+              while gh release view "v0.$DATE.$N" >/dev/null 2>&1; do
+                  N=$((N + 1))
+              done
+              TAG="v0.$DATE.$N"
+          fi
+          HEX="nezha-robot-template-$TAG.hex"
+          cp built/binary.hex "$HEX"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "hex=$HEX" >> "$GITHUB_OUTPUT"
+          echo "Releasing $HEX ($(du -h "$HEX" | cut -f1))"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.version.outputs.tag }}
+          path: ${{ steps.version.outputs.hex }}
+          if-no-files-found: error
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          HEX: ${{ steps.version.outputs.hex }}
+        run: |
+          set -euo pipefail
+          EXT="$(node -e 'process.stdout.write(require("./pxt.json").dependencies["nezha-diffdrive"])')"
+          {
+              echo "micro:bit **V2** firmware for the Nezha robot template."
+              echo
+              echo "To flash: download \`$HEX\`, plug the micro:bit in over USB, and"
+              echo "drag the file onto the \`MICROBIT\` drive."
+              echo
+              echo "| | |"
+              echo "|---|---|"
+              echo "| Commit | \`$GITHUB_SHA\` |"
+              echo "| DiffDrive extension | \`$EXT\` |"
+              echo "| Built | $(date -u '+%Y-%m-%d %H:%M UTC') |"
+              echo
+              echo "The robot answers on the **radio** (channel 55 / group 114). WiFi is"
+              echo "off: the extension has no way to take credentials from a program yet"
+              echo "— see \`setupWifi\` in pxt-nezha-diffdrive."
+          } > notes.md
+
+          # --target: on a tag push the tag already exists and this is a no-op;
+          # on a master push it creates the tag at this commit.
+          gh release create "$TAG" "$HEX" \
+              --title "$TAG" \
+              --notes-file notes.md \
+              --target "$GITHUB_SHA"
