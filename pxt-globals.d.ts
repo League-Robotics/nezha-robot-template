@@ -1,13 +1,19 @@
-// pxt-globals.d.ts — Ambient type declarations for the PXT/micro:bit
-// runtime surface used by nezha-robot-template projects.
+// pxt-globals.d.ts — PRE-SETUP FALLBACK ONLY. Not the source of truth.
 //
-// Provides IntelliSense for the DiffDrive extension and core micro:bit
-// APIs (input, basic, led, etc.) without pulling in PXT's full internal
-// type dependency tree. VS Code's TypeScript language server reads
-// these to resolve identifiers in main.ts — no more squiggles.
+// Real IntelliSense comes from the actual extension sources in
+// pxt_modules/, which tsconfig.json includes directly. This file exists
+// only so a freshly cloned repo has some completion BEFORE
+// `npm run setup` has downloaded those sources.
 //
-// This file is for editor tooling only. It is never shipped to the
-// device or used by PXT's own build pipeline.
+// DO NOT EXTEND THIS FILE. It used to be the only type surface, which is
+// why `PlanetX_Basic`, `diffDrive.emitLine`, `control.raiseEvent` and
+// EventBusSource all showed as errors despite compiling and running
+// fine — anything nobody had hand-typed simply did not exist to the
+// editor. To get types for a new API, add its extension to pxt.json and
+// run setup; the declarations come with it.
+//
+// Kept deliberately a strict SUBSET so it merges with the real
+// declarations without conflict.
 
 // ── Core micro:bit APIs ────────────────────────────────────
 

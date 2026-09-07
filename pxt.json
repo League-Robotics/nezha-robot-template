@@ -5,23 +5,24 @@
     "license": "MIT",
     "dependencies": {
         "core": "*",
-        "radio": "*",
-        "nezha-diffdrive": "github:League-Robotics/pxt-nezha-diffdrive#v0.20260902.1",
+        "nezha-diffdrive": "github:League-Robotics/pxt-nezha-diffdrive#v0.20260906.3",
+        "pxt-PlanetX": "github:elecfreaks/pxt-PlanetX#v1.6.7",
         "microphone": "*"
     },
     "files": [
         "README.md",
-        "main.blocks",
-        "main.ts",
-        "main.py"
-    ],
-    "testFiles": [
-        "test.ts"
+        "test/support.ts",
+        "test/square.ts",
+        "test/circle.ts",
+        "test/spin.ts",
+        "test/linetrack.ts",
+        "test/obstacle1.ts",
+        "test/boot.ts"
     ],
     "supportedTargets": [
         "microbit"
     ],
-    "preferredEditor": "blocksprj",
+    "preferredEditor": "tsprj",
     "yotta": {
         "config": {
             "microbit_radio_max_packet_size": 250,

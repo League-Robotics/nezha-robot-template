@@ -1,0 +1,14 @@
+{
+  "9906360200052820049d38a46da36a83000000006e052820": {
+    "announcement": "device NEZHA2 robot gopiv 2175407711",
+    "board_name": "gopiv",
+    "common_name": "robot",
+    "device_id": 2175407711,
+    "device_name": "gopiv",
+    "enum": 1,
+    "port": "/dev/cu.usbmodem2121102",
+    "role": "NEZHA2",
+    "serial": "2175407711",
+    "uid": "9906360200052820049d38a46da36a83000000006e052820"
+  }
+}

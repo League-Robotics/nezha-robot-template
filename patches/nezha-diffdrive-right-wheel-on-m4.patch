@@ -1,0 +1,27 @@
+gopiv: move the right wheel from M2 to M4.
+
+M2's encoder was dropping ~17-21% of its reads on gopiv -- 101 then 97
+glitch-armor rejections, 24-26 rebaselines and 135-145 I2C faults per
+20 s square tour, with M1 clean in the same runs. A replacement motor
+made no difference (the fault stayed on the port, not the motor), so
+the wheel and its cable were moved to M4 on 2026-09-06.
+
+BENCH-SPECIFIC, NOT AN UPSTREAM FIX. This describes how one robot is
+cabled. Drop it from PATCHES in scripts/patch-extension.sh the moment
+gopiv goes back on M2, or it will silently drive the wrong port.
+
+--- a/src/shims.cpp
++++ b/src/shims.cpp
+@@ -109,7 +109,10 @@
+   // VERIFIED 2026-08-20 under AprilCam: commanded +180 swept the tag
+   // yaw counter-clockwise (17.9 deg -> 169.7 deg mid-turn samples) --
+   // physical direction now matches the commanded sign.
+   NezhaMotorPort left{1, -1};    // left = M1, mirrored
+-  NezhaMotorPort right{2, +1};   // right = M2
++  // gopiv 2026-09-06: right wheel moved M2 -> M4, bad encoder on M2.
++  // Sign is unchanged -- only the port moved, the wheel is still the
++  // same wheel mounted the same way round.
++  NezhaMotorPort right{4, +1};   // right = M4
+   CodalClock clock;
+   CodalSleeper sleeper;
+   CodalFiberLauncher launcher;

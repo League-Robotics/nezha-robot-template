@@ -32,6 +32,11 @@ PATCH_DIR="patches"
 # bump), so this column cannot identify a release. See above.
 PATCHES=(
     "nezha-diffdrive-runtext-use-after-release.patch|1.20260829.1|runTextScratch_"
+    # BENCH WIRING, not a fix: gopiv's right wheel is on M4 because M2's
+    # encoder is faulty. Remove this line when the robot goes back on M2.
+    # gopiv-only bench wiring (right wheel on M4). OFF: we are on tigez, which
+    # is stock M1/M2. Re-enable ONLY when flashing gopiv.
+    # "nezha-diffdrive-right-wheel-on-m4.patch|1.20260906.2|right{4, +1}"
 )
 
 # RETIRED: nezha-diffdrive-single-producer-serial.patch

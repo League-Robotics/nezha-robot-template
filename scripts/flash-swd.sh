@@ -49,8 +49,44 @@ for attempt in 1 2 3; do
     sleep 2
 done
 
-echo "" >&2
-echo "flash-swd: SWD programming failed 3x. Core: $(state)" >&2
-echo "  Fall back to mass storage:  cat $HEX > /Volumes/MICROBIT/fw.hex" >&2
-echo "  (DAPLink parses the hex itself there, so it does not need a working core.)" >&2
-exit 1
+# ---- automatic fallback: mass storage --------------------------------------
+# SWD needs the target core healthy enough to run pyOCD's flash algorithm, and
+# `pyocd cmd -c "reset halt"` does NOT persist: pyocd resumes the target when it
+# disconnects, so the core is running again by the time the next pyocd process
+# connects. When that leaves us unable to program, DAPLink's mass-storage path
+# still works -- the interface MCU parses the hex itself and needs nothing from
+# the target core. Slower and gives no error detail, but it is the path that
+# always works, so take it automatically rather than making a human retype it.
+echo "flash-swd: SWD failed 3x (core: $(state)) — falling back to mass storage" >&2
+
+MSD=/Volumes/MICROBIT
+if [ ! -d "$MSD" ]; then
+    echo "flash-swd: $MSD not mounted; cannot fall back." >&2
+    exit 1
+fi
+
+PORT=$(ls /dev/cu.usbmodem* 2>/dev/null | head -1)
+cat "$HEX" > "$MSD/fw.hex" || { echo "flash-swd: MSD write failed" >&2; exit 1; }
+sync
+
+# DAPLink CONSUMES the file when it accepts it: the hex disappears from the
+# volume and FAIL.TXT appears if it was rejected. That is the completion signal
+# -- the serial port does not reliably drop, so do not wait on that.
+for _ in $(seq 1 60); do
+    [ -e "$MSD/fw.hex" ] || break
+    sleep 1
+done
+
+if [ -f "$MSD/FAIL.TXT" ]; then
+    echo "flash-swd: DAPLink rejected the hex:" >&2
+    cat "$MSD/FAIL.TXT" >&2
+    exit 1
+fi
+if [ -e "$MSD/fw.hex" ]; then
+    echo "flash-swd: hex still on the volume after 60s — DAPLink did not take it." >&2
+    exit 1
+fi
+
+sleep 3
+echo "flash-swd: ok via mass storage ($HEX)"
+exit 0

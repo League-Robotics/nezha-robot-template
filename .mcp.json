@@ -1,0 +1,9 @@
+{
+    "aprilcam": {
+      "command": "aprilcam",
+      "args": [
+        "mcp"
+      ]
+    }
+  }
+}
