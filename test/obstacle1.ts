@@ -9,8 +9,6 @@ diffDrive.runSignature("turn", "(deg:number)")
 diffDrive.runSignature("speed", "(pct:number)")
 diffDrive.runSignature("m", "(mm:number)")
 diffDrive.runSignature("t", "(deg:number)")
-diffDrive.runSignature("clear", "()")
-diffDrive.runSignature("diag", "()")
 
 // RUN:clear -- drop a latched e-stop and stall latch. The extension latches
 // both, and nothing in this program could release them, so one stall left the
@@ -29,3 +27,7 @@ diffDrive.onRun("diag", function (a) {
         + " lease=" + diffDrive.probe(3) + " connL=" + diffDrive.probe(4)
         + " connR=" + diffDrive.probe(5) + " stalled=" + (diffDrive.isStalled() ? 1 : 0))
 })
+
+// Declared after their onRun() bindings above (see runSignature()).
+diffDrive.runSignature("clear", "()")
+diffDrive.runSignature("diag", "()")
