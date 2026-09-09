@@ -126,14 +126,52 @@ jobs:
           fi
           echo "Baked profile verified: $GOT"
 
+      # Every release carries the SAME image under two names, plus a
+      # manifest:
+      #
+      #   nezha-robot-template-<TAG>.hex  the name the release notes tell a
+      #                                   student to download and drag onto
+      #                                   the MICROBIT drive -- self-describing
+      #                                   once it is sitting in ~/Downloads
+      #                                   next to five other .hex files.
+      #   MICROBIT.hex                    the fixed name robot-console's host
+      #                                   resolves by
+      #                                   (packages/host/src/releases.ts,
+      #                                   HEX_ASSET_NAME), the same convention
+      #                                   microbit-radio-relay publishes.
+      #   MICROBIT.hex.txt                that host's sha256 manifest. Without
+      #                                   it the console has nothing to verify
+      #                                   the download against and refuses the
+      #                                   release outright.
+      #
+      # Two names for one file is cheap; a console that cannot flash the
+      # calibration image is not. Do not drop either.
       - name: Package the hex
-        run: cp built/binary.hex "${{ steps.version.outputs.hex }}"
+        env:
+          HEX: ${{ steps.version.outputs.hex }}
+          PROFILE: ${{ steps.version.outputs.profile }}
+        run: |
+          set -euo pipefail
+          cp built/binary.hex "$HEX"
+          cp built/binary.hex MICROBIT.hex
+          EXT="$(node -e 'process.stdout.write(require("./pxt.json").dependencies["nezha-diffdrive"])')"
+          {
+              echo "commit: $GITHUB_SHA"
+              echo "built:  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              echo "sha256: $(sha256sum MICROBIT.hex | cut -d' ' -f1)"
+              echo "profile: $PROFILE"
+              echo "extension: $EXT"
+          } > MICROBIT.hex.txt
+          cat MICROBIT.hex.txt
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.version.outputs.tag }}
-          path: ${{ steps.version.outputs.hex }}
+          path: |
+            ${{ steps.version.outputs.hex }}
+            MICROBIT.hex
+            MICROBIT.hex.txt
           if-no-files-found: error
 
       - name: Publish release
@@ -152,6 +190,10 @@ jobs:
               echo
               echo "To flash: download \`$HEX\`, plug the micro:bit in over USB, and"
               echo "drag the file onto the \`MICROBIT\` drive."
+              echo
+              echo "\`MICROBIT.hex\` is the same image under the fixed name the robot"
+              echo "console fetches by, and \`MICROBIT.hex.txt\` is its sha256 manifest."
+              echo "Flashing by hand? Take \`$HEX\`."
               echo
               echo "| | |"
               echo "|---|---|"
@@ -174,7 +216,7 @@ jobs:
 
           # --target: on a tag push the tag already exists and this is a no-op;
           # on a master push it creates the tag at this commit.
-          gh release create "$TAG" "$HEX" \
+          gh release create "$TAG" "$HEX" MICROBIT.hex MICROBIT.hex.txt \
               --title "$TAG" \
               --notes-file notes.md \
               --target "$GITHUB_SHA"
