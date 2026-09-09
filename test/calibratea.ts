@@ -351,3 +351,4 @@ function calibrateA() {
 }
 
 diffDrive.onRun("cala", function (arg) { calibrateA() })
+diffDrive.runSignature("cala", "()")

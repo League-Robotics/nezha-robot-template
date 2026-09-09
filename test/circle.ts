@@ -33,3 +33,4 @@ function driveCircle() {
 }
 
 diffDrive.onRun("circle", function (arg) { driveCircle() })
+diffDrive.runSignature("circle", "()")

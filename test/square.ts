@@ -21,3 +21,4 @@ function driveSquare() {
 }
 
 diffDrive.onRun("square", function (arg) { driveSquare() })
+diffDrive.runSignature("square", "()")

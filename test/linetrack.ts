@@ -86,7 +86,9 @@ namespace linetrack {
         const kp = diffDrive.runArgCount() > 2 ? diffDrive.runArg(2) : DEFAULT_KP
         follow(speed, maxS, kp)
     })
+    diffDrive.runSignature("line", "(speed:number=" + DEFAULT_SPEED + ",max_speed:number=60,kp:number=" + DEFAULT_KP + ")")
     diffDrive.onRun("abort", function (arg) { aborted = true })
+    diffDrive.runSignature("abort", "()")
     diffDrive.onRun("sense", function (arg) {
         for (let i = 0; i < 20; i++) {
             const b = lineBits()
@@ -95,5 +97,6 @@ namespace linetrack {
         }
     })
 
+    diffDrive.runSignature("sense", "()")
     diffDrive.emitLine("boot linetrack ready")
 }

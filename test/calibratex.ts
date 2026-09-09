@@ -86,3 +86,4 @@ function calibrateX() {
 }
 
 diffDrive.onRun("calx", function (arg) { calibrateX() })
+diffDrive.runSignature("calx", "()")

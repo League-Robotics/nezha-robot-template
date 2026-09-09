@@ -45,3 +45,9 @@ diffDrive.onRun("trace", function (arg) {
     diffDrive.emitLine("trace=" + (tracing ? 1 : 0))
 })
 diffDrive.onRun("counters", function (arg) { counters("now") })
+
+// Parameter declarations for the console's function panel (FUNCS lists
+// `funcs <name> <signature>`; see diffDrive.runSignature). Keep each
+// one matching what its handler actually reads.
+diffDrive.runSignature("trace", "(on:number=0)")
+diffDrive.runSignature("counters", "()")

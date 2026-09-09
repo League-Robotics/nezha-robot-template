@@ -4,6 +4,13 @@ diffDrive.onRun("turn", function (a) { diffDrive.move(0, a) })
 diffDrive.onRun("speed", function (a) { diffDrive.setDefaultSpeed(a) })
 diffDrive.onRun("m", function (a) { diffDrive.move(a, 0) })
 diffDrive.onRun("t", function (a) { diffDrive.move(0, a) })
+diffDrive.runSignature("push", "(mm:number)")
+diffDrive.runSignature("turn", "(deg:number)")
+diffDrive.runSignature("speed", "(pct:number)")
+diffDrive.runSignature("m", "(mm:number)")
+diffDrive.runSignature("t", "(deg:number)")
+diffDrive.runSignature("clear", "()")
+diffDrive.runSignature("diag", "()")
 
 // RUN:clear -- drop a latched e-stop and stall latch. The extension latches
 // both, and nothing in this program could release them, so one stall left the

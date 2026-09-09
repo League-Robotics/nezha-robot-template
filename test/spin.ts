@@ -16,3 +16,4 @@ diffDrive.onRun("spin", function (arg) {
     diffDrive.stopMove()
     counters("end")
 })
+diffDrive.runSignature("spin", "(secs:number=20)")
