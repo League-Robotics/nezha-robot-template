@@ -5,7 +5,7 @@
     "license": "MIT",
     "dependencies": {
         "core": "*",
-        "nezha-diffdrive": "github:League-Robotics/pxt-nezha-diffdrive#v0.20260906.3",
+        "nezha-diffdrive": "github:League-Robotics/pxt-nezha-diffdrive#v1.20260907.5",
         "pxt-PlanetX": "github:elecfreaks/pxt-PlanetX#v1.6.7",
         "microphone": "*"
     },
@@ -16,6 +16,7 @@
         "test/square.ts",
         "test/circle.ts",
         "test/calibratex.ts",
+        "test/calibratea.ts",
         "test/spin.ts",
         "test/linetrack.ts",
         "test/obstacle1.ts",

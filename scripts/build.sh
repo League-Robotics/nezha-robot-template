@@ -6,10 +6,23 @@
 #   bash scripts/build.sh --cloud          # cloud build (no Docker, uses MakeCode service)
 #   bash scripts/build.sh --local          # local build (explicit)
 #   bash scripts/build.sh --refresh-image  # re-pull the compiler image before building
+#   bash scripts/build.sh --robot tigez    # bake that robot's name into kProfile
+#   bash scripts/build.sh --profile calibration-0.20260907.1
+#
+# kProfile is a compile-time constant in the extension, so what a hex IS gets
+# decided HERE, not at flash time -- see scripts/bake-profile.sh.
+#   --robot NAME     a bench build aimed at one robot (validated against the
+#                    fleet registry)
+#   --profile STR    a build identity that is not a robot: the calibration
+#                    image published by .github/workflows/release.yml
+# With neither, the profile is reset to the "unbaked" placeholder and the hex
+# is generic -- which is what a student building their own program gets.
 set -euo pipefail
 
 MODE="--local"
 REFRESH=0
+ROBOT=""
+PROFILE=""
 FLAGS="PXT_COMPILE_SWITCHES=csv---mbcodal"
 IMAGE="ghcr.io/league-microbit/yotta-compiler:latest"
 # PXT's codal build engine runs `docker run ... pext/yotta:latest`, so whatever
@@ -21,7 +34,9 @@ while [[ $# -gt 0 ]]; do
         --cloud) MODE="--cloud"; shift ;;
         --local) MODE="--local"; shift ;;
         --refresh-image) REFRESH=1; shift ;;
-        *) echo "Usage: bash scripts/build.sh [--local | --cloud] [--refresh-image]" >&2; exit 1 ;;
+        --robot) ROBOT="${2:-}"; [ -n "$ROBOT" ] || { echo "--robot needs a board name" >&2; exit 1; }; shift 2 ;;
+        --profile) PROFILE="${2:-}"; [ -n "$PROFILE" ] || { echo "--profile needs a value" >&2; exit 1; }; shift 2 ;;
+        *) echo "Usage: bash scripts/build.sh [--local | --cloud] [--refresh-image] [--robot NAME | --profile STR]" >&2; exit 1 ;;
     esac
 done
 
@@ -34,6 +49,43 @@ if [ ! -f test/secrets.ts ]; then
     cp test/secrets.example.ts test/secrets.ts
     echo "Created test/secrets.ts from the template — set WIFI_PASSWORD in it."
 fi
+
+# Stamp the target robot into the extension's kProfile before compiling.
+#
+# Runs on EVERY build, including the no---robot case, and that is the point:
+# pxt_modules/ is a dependency cache, so whatever was baked by the last build
+# is still sitting there. Skipping the reset would silently inherit the
+# previous robot's name -- a hex that lies with authority, which is strictly
+# worse than one that admits it is unbaked.
+#
+# A failure here IS fatal, unlike the old patch-extension.sh hook. A patch that
+# fails to apply leaves working code; a bake that fails leaves the hex claiming
+# the wrong robot, and the whole reason this exists is that a wrong profile is
+# indistinguishable from a right one once flashed.
+if [ -n "$ROBOT" ] && [ -n "$PROFILE" ]; then
+    echo "build: --robot and --profile are mutually exclusive." >&2
+    exit 1
+elif [ -n "$ROBOT" ]; then
+    bash scripts/bake-profile.sh --robot "$ROBOT"
+elif [ -n "$PROFILE" ]; then
+    bash scripts/bake-profile.sh --profile "$PROFILE"
+else
+    bash scripts/bake-profile.sh --none
+fi
+
+# Keep the WiFi password out of the DBG:wifi line. Runs on EVERY build, for
+# the same reason the bake above does: pxt_modules/ is a dependency cache, so a
+# wipe silently restores the leak. Fatal on failure -- a build that ships the
+# password with nothing to say so is the exact defect this closes.
+bash scripts/redact-wifi-trace.sh
+
+# Read the baked value back out of the source rather than reusing the flag. The
+# registry canonicalises case (`--robot TIGEZ` bakes `tigez`), so the argument
+# is not necessarily what is now in the file -- and this is what actually gets
+# compiled, so reading it is also a check that the substitution landed.
+BAKED=$(sed -n 's/^constexpr const char\* kProfile = "\(.*\)";.*$/\1/p' \
+    pxt_modules/nezha-diffdrive/src/comms/protocol.cpp)
+[ -n "$BAKED" ] || { echo "build: could not read back the baked kProfile" >&2; exit 1; }
 
 HOST_ARCH=$(docker info --format '{{.Architecture}}' 2>/dev/null || uname -m)
 case "$HOST_ARCH" in
@@ -118,8 +170,18 @@ esac
 
 HEX="built/binary.hex"
 if [ -f "$HEX" ]; then
+    # Record which robot this hex is for, beside the hex itself. built/ is
+    # wiped by `npm run clean` in step with the hex, so the marker can never
+    # outlive or contradict the artefact it describes. scripts/deploy.sh reads
+    # it to refuse flashing one robot's build onto another.
+    printf '%s\n' "$BAKED" > built/.baked-profile
     echo ""
     echo "✓ Build complete: $(ls -lh "$HEX" | awk '{print $5}')  $(realpath "$HEX")"
+    if [ "$BAKED" = "unbaked" ]; then
+        echo "  profile: unbaked (generic — pass --robot NAME or --profile STR to stamp one)"
+    else
+        echo "  profile: $BAKED"
+    fi
 else
     echo "✗ Build produced no hex file." >&2
     exit 1

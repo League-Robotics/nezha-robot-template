@@ -2,6 +2,24 @@
 # publishes the resulting .hex as a GitHub Release, so the firmware can be
 # flashed from anywhere without a local toolchain.
 #
+# WHAT THIS IMAGE IS: the CALIBRATION image for the fleet -- the hex carrying
+# the calx/cala routines students run to measure a robot's wheel diameter and
+# effective track width. It is deliberately NOT robot-specific: one image runs
+# on any Nezha board, and the numbers it reports are what get written back into
+# that robot's own config.
+#
+# So the build stamps `calibration-<version>` into the extension's kProfile
+# (scripts/bake-profile.sh), and every released board answers the wire `ID`
+# verb with the exact image it is running:
+#
+#     id diffdrive calibration-0.20260907.1 <ext version> <board name>
+#
+# The version rides in the PROFILE rather than kVersion because kVersion
+# belongs to the extension -- upstream bakes its own release version there in
+# tools/publish_extension.py -- and this image's version has nowhere else to
+# go. Profile is build provenance, which is exactly what a calibration image's
+# version is.
+#
 # Triggers
 #   push to master  -> builds and cuts a dated release, v0.YYYYMMDD.N
 #   push of a v* tag -> builds and releases under that exact tag
@@ -53,14 +71,13 @@ jobs:
           npx pxt target microbit
           npx pxt install
 
-      # build.sh seeds test/secrets.ts from test/secrets.example.ts. Nothing
-      # reads those constants today (WiFi is off — see test/boot.ts), but
-      # pxt.json lists the file, so the build needs it to exist. Real
-      # credentials must never be set here: a public release artifact would
-      # carry a recoverable password.
-      - name: Build
-        run: npm run build:cloud
-
+      # build.sh seeds test/secrets.ts from test/secrets.example.ts. test/boot.ts
+      # DOES read those constants now -- it calls setupWifi() with them -- so
+      # what the example file carries is what the released image tries to join
+      # with. It carries an EMPTY password, and it must stay that way: a public
+      # release artifact would otherwise ship a recoverable one.
+      # BEFORE the build, not after: kProfile is a compile-time constant, so
+      # the version has to be known while the C++ is still being compiled.
       - name: Determine version
         id: version
         env:
@@ -79,11 +96,38 @@ jobs:
               done
               TAG="v0.$DATE.$N"
           fi
-          HEX="nezha-robot-template-$TAG.hex"
-          cp built/binary.hex "$HEX"
+          # Drop the tag's leading `v` for the baked value: `v` is a git tag
+          # convention, and this is a value on the wire. Matches the shape
+          # upstream bakes into kVersion (`0.YYYYMMDD.n`, no v).
+          PROFILE="calibration-${TAG#v}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "hex=$HEX" >> "$GITHUB_OUTPUT"
-          echo "Releasing $HEX ($(du -h "$HEX" | cut -f1))"
+          echo "profile=$PROFILE" >> "$GITHUB_OUTPUT"
+          echo "hex=nezha-robot-template-$TAG.hex" >> "$GITHUB_OUTPUT"
+          echo "Building $TAG as profile $PROFILE"
+
+      - name: Build
+        run: bash scripts/build.sh --cloud --profile "${{ steps.version.outputs.profile }}"
+
+      # The bake is the one part of this build that can fail SILENTLY: if
+      # protocol.cpp changes shape upstream, the substitution stops matching
+      # and the hex ships reporting `unbaked` with nothing else going wrong.
+      # bake-profile.sh already exits non-zero on that, and build.sh reads the
+      # value back out of the source -- this asserts the result reached the
+      # artefact, so a release can never carry an unstamped or stale profile.
+      - name: Verify the baked profile
+        env:
+          WANT: ${{ steps.version.outputs.profile }}
+        run: |
+          set -euo pipefail
+          GOT="$(cat built/.baked-profile)"
+          if [ "$GOT" != "$WANT" ]; then
+              echo "::error::hex was built with profile '$GOT', expected '$WANT'"
+              exit 1
+          fi
+          echo "Baked profile verified: $GOT"
+
+      - name: Package the hex
+        run: cp built/binary.hex "${{ steps.version.outputs.hex }}"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -97,24 +141,35 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
           HEX: ${{ steps.version.outputs.hex }}
+          PROFILE: ${{ steps.version.outputs.profile }}
         run: |
           set -euo pipefail
           EXT="$(node -e 'process.stdout.write(require("./pxt.json").dependencies["nezha-diffdrive"])')"
           {
-              echo "micro:bit **V2** firmware for the Nezha robot template."
+              echo "The **calibration image** — micro:bit **V2** firmware carrying the"
+              echo "\`calx\` and \`cala\` routines for measuring a robot's wheel diameter"
+              echo "and effective track width. One image runs on any Nezha board."
               echo
               echo "To flash: download \`$HEX\`, plug the micro:bit in over USB, and"
               echo "drag the file onto the \`MICROBIT\` drive."
               echo
               echo "| | |"
               echo "|---|---|"
+              echo "| Profile on the wire | \`$PROFILE\` |"
               echo "| Commit | \`$GITHUB_SHA\` |"
               echo "| DiffDrive extension | \`$EXT\` |"
               echo "| Built | $(date -u '+%Y-%m-%d %H:%M UTC') |"
               echo
-              echo "The robot answers on the **radio** (channel 55 / group 114). WiFi is"
-              echo "off: the extension has no way to take credentials from a program yet"
-              echo "— see \`setupWifi\` in pxt-nezha-diffdrive."
+              echo "Ask a flashed board what it is running with \`mbdeploy connect <board> ID\`;"
+              echo "the second field is the profile above."
+              echo
+              echo "The robot answers on the **radio** (channel 55 / group 114)."
+              echo
+              echo "WiFi is compiled in but inert in this image: \`test/boot.ts\` reads its"
+              echo "credentials from \`test/secrets.ts\`, which is gitignored, and CI seeds"
+              echo "that from \`test/secrets.example.ts\` with an EMPTY password. A public"
+              echo "release artifact must never carry a recoverable one. To use WiFi, build"
+              echo "locally with your own \`test/secrets.ts\`."
           } > notes.md
 
           # --target: on a tag push the tag already exists and this is a no-op;
