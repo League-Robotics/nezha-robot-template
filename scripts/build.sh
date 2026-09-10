@@ -73,11 +73,18 @@ else
     bash scripts/bake-profile.sh --none
 fi
 
-# Keep the WiFi password out of the DBG:wifi line. Runs on EVERY build, for
-# the same reason the bake above does: pxt_modules/ is a dependency cache, so a
-# wipe silently restores the leak. Fatal on failure -- a build that ships the
-# password with nothing to say so is the exact defect this closes.
-bash scripts/redact-wifi-trace.sh
+# The WiFi password used to be patched out of the DBG:wifi line here, by
+# scripts/redact-wifi-trace.sh, because the extension reported the join command
+# -- passphrase and all -- verbatim. The extension now redacts at the source:
+# WifiLink::startCommand() takes a trace override and the AT+CWJAP= site passes
+# `AT+CWJAP="<ssid>",***`, so lastCommand() never holds the secret in the first
+# place (pxt-nezha-diffdrive v1.20260910.1). The patch script is gone: it had
+# nothing left to match, and a build-time patch that silently stops matching is
+# worse than no patch at all -- which is exactly how it failed, loudly, on the
+# first build after the pin moved.
+#
+# If you pin an OLDER extension than v1.20260910.1, the leak is back and this
+# guard is not here to catch it. Check DBG:wifi's cmd= field on a real join.
 
 # Read the baked value back out of the source rather than reusing the flag. The
 # registry canonicalises case (`--robot TIGEZ` bakes `tigez`), so the argument
