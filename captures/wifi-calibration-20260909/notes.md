@@ -34,3 +34,21 @@ gopiv was carrying a locally built `calibration-0.20260909.4` on
 DiffDrive `1.20260909.2` before this session reflashed it; it now runs
 `calibration-wifi-check-20260909b` on the released extension pin
 `1.20260907.5`.
+
+## Re-verified on the current pin
+
+While this session ran, another session pushed `03d92bf`, moving
+`pxt.json` to DiffDrive `v1.20260909.2` (that pin is what gopiv's
+pre-session `calibration-0.20260909.4` was built from). Rebuilt on it and
+reflashed so gopiv is not left behind the repo:
+
+```
+id diffdrive calibration-wifi-check-20260909 1.20260909.2 gopiv
+DBG:wifi state=5 ip=192.168.1.218 peer=-:0 tcp=1/1 to=0 restarts=0 sent=2 rx=3 drop=0 mdns=1/1 ... credsrc=1 trunc=0
+```
+
+Note the profile reads back as `calibration-wifi-check-20260909`, one
+character short of the `...09c` that was baked: `Protocol::profileBuf_`
+holds 31 usable characters and this name is 32. Truncation is silent in
+`ID`'s output (`DBG:profile ... trunc=1` is where it shows). Keep
+release profile names under 31 characters.
