@@ -159,6 +159,26 @@ ensure_image() {
     exit 1
 }
 
+# The hex this build must replace, sampled BEFORE the compiler runs.
+#
+# WHY THIS EXISTS: the success check below used to be `[ -f "$HEX" ]` -- does
+# the file exist -- which is true of a hex left over from any previous build.
+# On 2026-09-11 `pxt build` began silently doing nothing (node_modules had been
+# left half-installed, losing node_modules/pxtcli.json, so pxt treated this
+# directory as a TARGET, found no libs/, and exited 0 without compiling). The
+# script found the two-day-old hex, printed "Build complete", and wrote a
+# .baked-profile naming the robot just asked for -- and that hex was then
+# flashed to a robot. A stale artefact with a confident marker beside it is
+# exactly the "hex that lies with authority" the bake step above exists to
+# prevent, so freshness is checked rather than assumed.
+#
+# MUST be sampled here, not after the build: the obvious placement next to the
+# check reads the file the compiler has already rewritten, compares it with
+# itself, and condemns every build including the good ones.
+HEX="built/binary.hex"
+HEX_MTIME_BEFORE=0
+[ -f "$HEX" ] && HEX_MTIME_BEFORE=$(stat -f %m "$HEX" 2>/dev/null || stat -c %Y "$HEX" 2>/dev/null || echo 0)
+
 case "$MODE" in
     --cloud)
         echo "=== Cloud build (MakeCode compile service) ==="
@@ -175,8 +195,26 @@ case "$MODE" in
         ;;
 esac
 
-HEX="built/binary.hex"
 if [ -f "$HEX" ]; then
+    # A build that changed nothing at all did not build. Identical CONTENT is
+    # legitimate (same sources, reproducible compiler), so an unchanged mtime
+    # is the thing that condemns it: a real compile rewrites the file even when
+    # the bytes come out the same.
+    HEX_MTIME_AFTER=$(stat -f %m "$HEX" 2>/dev/null || stat -c %Y "$HEX" 2>/dev/null || echo 0)
+    if [ "$HEX_MTIME_AFTER" = "$HEX_MTIME_BEFORE" ]; then
+        echo "" >&2
+        echo "✗ Build wrote no hex: $HEX is unchanged from before this run." >&2
+        echo "  The compiler did nothing. Do NOT flash $HEX -- it is stale, and" >&2
+        echo "  built/.baked-profile does not describe it." >&2
+        echo "" >&2
+        echo "  Most likely: node_modules/pxtcli.json is missing, so pxt treats" >&2
+        echo "  this directory as a target and exits 0 without compiling. Fix:" >&2
+        echo "    npx pxt target microbit" >&2
+        echo "  (or 'npm run setup' for the full reinstall)." >&2
+        rm -f built/.baked-profile
+        exit 1
+    fi
+
     # Record which robot this hex is for, beside the hex itself. built/ is
     # wiped by `npm run clean` in step with the hex, so the marker can never
     # outlive or contradict the artefact it describes. scripts/deploy.sh reads

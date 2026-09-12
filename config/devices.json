@@ -31,9 +31,17 @@
     "device_id": 3527777815,
     "device_name": "tigez",
     "enum": 5,
+    "port": "/dev/cu.usbmodem2121102",
     "role": "NEZHA2",
     "serial": "3527777815",
     "uid": "99063602000528203b43773cab0210ea000000006e052820"
+  },
+  "99063602000528208939f0a5fd47f738000000006e052820": {
+    "board_name": "vitut",
+    "device_id": 2198604104,
+    "enum": 6,
+    "port": "/dev/cu.usbmodem2121402",
+    "uid": "99063602000528208939f0a5fd47f738000000006e052820"
   },
   "9906360200052820e9d16c3809a44554000000006e052820": {
     "board_name": "zavaz",
