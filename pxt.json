@@ -5,7 +5,7 @@
     "license": "MIT",
     "dependencies": {
         "core": "*",
-        "nezha-diffdrive": "github:League-Robotics/pxt-nezha-diffdrive#v1.20260912.7",
+        "nezha-diffdrive": "github:League-Robotics/pxt-nezha-diffdrive#v1.20260912.8",
         "pxt-PlanetX": "github:elecfreaks/pxt-PlanetX#v1.6.7",
         "microphone": "*"
     },
