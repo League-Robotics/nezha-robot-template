@@ -18,13 +18,20 @@
 // it is assigned to.
 diffDrive.setupRadio(55, 114)
 
-// Motor wiring. tovez is wired mirror-image to the extension's tracked
-// default (left wheel on port 2, right on port 1), which drives the
-// robot backwards until this says otherwise. Naming the port the other
-// wheel is on swaps the pair, so one line does it.
+// Motor wiring, per robot. The extension's default is left on M1, right on
+// M2 -- correct for tigez and the rest of the fleet. tovez is wired
+// mirror-image (left on M2, right on M1) and drives backwards on the
+// default. Naming the port the other wheel is on swaps the pair, so one
+// line fixes it.
+//
+// Keyed on control.deviceName(), the name burned into the chip, so this
+// hex is safe on every board: applied unconditionally it mirror-wired
+// tigez, whose correct wiring IS the default.
 // MEASURED tovez 2026-09-12: raw encoder delta reverses with the sign
 // (pxt-nezha-diffdrive captures/configmotor-hardware-20260912/notes.md).
-diffDrive.configureMotor(MotorSide.Left, MotorPort.M2, MotorDirection.Reversed)
+if (control.deviceName() == "tovez") {
+    diffDrive.configureMotor(MotorSide.Left, MotorPort.M2, MotorDirection.Reversed)
+}
 
 //radio.setGroup(11)
 //let channel = "J"
