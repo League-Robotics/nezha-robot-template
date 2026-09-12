@@ -215,6 +215,15 @@ if [ -f "$HEX" ]; then
         exit 1
     fi
 
+    # V2 only: the extension does not run on a V1, so a hex that is anything
+    # but a V2 program is refused here -- before it gets a profile marker that
+    # would let scripts/deploy.sh flash it. See scripts/check-v2-hex.sh.
+    if ! bash scripts/check-v2-hex.sh "$HEX"; then
+        rm -f built/.baked-profile
+        echo "✗ Refusing $HEX: not a V2-only image. Do NOT flash it." >&2
+        exit 1
+    fi
+
     # Record which robot this hex is for, beside the hex itself. built/ is
     # wiped by `npm run clean` in step with the hex, so the marker can never
     # outlive or contradict the artefact it describes. scripts/deploy.sh reads
