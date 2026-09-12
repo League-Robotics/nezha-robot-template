@@ -18,6 +18,14 @@
 // it is assigned to.
 diffDrive.setupRadio(55, 114)
 
+// Motor wiring. tovez is wired mirror-image to the extension's tracked
+// default (left wheel on port 2, right on port 1), which drives the
+// robot backwards until this says otherwise. Naming the port the other
+// wheel is on swaps the pair, so one line does it.
+// MEASURED tovez 2026-09-12: raw encoder delta reverses with the sign
+// (pxt-nezha-diffdrive captures/configmotor-hardware-20260912/notes.md).
+diffDrive.configureMotor(MotorSide.Left, MotorPort.M2, MotorDirection.Reversed)
+
 //radio.setGroup(11)
 //let channel = "J"
 //radio.setFrequencyBand(parseInt(channel, 36) + 10)
