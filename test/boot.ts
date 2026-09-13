@@ -13,10 +13,42 @@
 //
 // setupRadio() takes the radio over: MakeCode's own `radio send` /
 // `on radio received` blocks stop working in the same program from here on,
-// and it cannot be undone without a restart. Channel 55 / group 114 is what
-// this fleet's relay listens on; change it and the robot drops off the relay
-// it is assigned to.
-diffDrive.setupRadio(55, 114)
+// and it cannot be undone without a restart.
+//
+// Every robot has its OWN radio address, derived from the name burned into
+// its chip -- there is no shared fleet channel. This line used to hardcode
+// 55/114, which is tigez's address, so every board running this image
+// answered on tigez's channel and a relay could not reach one robot alone.
+// MEASURED 2026-09-12 through the torture relay: on 55/114 gopiv, tovez and
+// vevov all answered ID; on tovez's own 55/108, silence.
+// To reach one robot, point the relay at it by name: `!N <name>`.
+// [channel, group] derived from a micro:bit's five-letter name, or [] if the
+// name is not one. Same map as pxt-nezha-diffdrive's make_deploy.py
+// derive_radio_from_name() and the relay's `!N`: the name is DEVICEID[1] in
+// base 5 (consonants zvgpt at positions 0/2/4, vowels uoiea at 1/3,
+// big-endian); channel = 25 + 2*(n % 25), group = 1 + n/25 with 10 skipped.
+function radioAddressFromName(name: string): number[] {
+    const consonants = "zvgpt"
+    const vowels = "uoiea"
+    if (name.length != 5) return []
+    let n = 0
+    for (let i = 0; i < 5; i++) {
+        const alphabet = i % 2 == 0 ? consonants : vowels
+        const digit = alphabet.indexOf(name.charAt(i).toLowerCase())
+        if (digit < 0) return []
+        n = n * 5 + digit
+    }
+    let group = 1 + Math.idiv(n, 25)
+    if (group >= 10) group += 1
+    return [25 + 2 * (n % 25), group]
+}
+
+const RADIO_ADDRESS = radioAddressFromName(control.deviceName())
+if (RADIO_ADDRESS.length == 2) {
+    diffDrive.setupRadio(RADIO_ADDRESS[0], RADIO_ADDRESS[1])
+}
+// No derivable address leaves the radio to MakeCode rather than guessing one:
+// a guessed channel is exactly how the whole fleet ended up sharing one.
 
 // Motor wiring, per robot. The extension's default is left on M1, right on
 // M2 -- correct for tigez and the rest of the fleet. tovez is wired
@@ -42,6 +74,9 @@ diffDrive.setupWifi(WIFI_SSID, WIFI_PASSWORD)
 // One line per thing a bench operator would otherwise have to read the source
 // for, so `mbdeploy connect` shows it at boot.
 diffDrive.emitLine("boot tests ready")
+diffDrive.emitLine(RADIO_ADDRESS.length == 2
+    ? "boot radio " + control.deviceName() + " ch " + RADIO_ADDRESS[0] + " grp " + RADIO_ADDRESS[1]
+    : "boot radio off: " + control.deviceName() + " has no derived address")
 diffDrive.emitLine("boot verbs: square circle spin[:secs] line sense"
     + " calx cala push:<cm> turn:<deg> speed:<cm/s> trace:0|1 counters clear diag")
 diffDrive.emitLine("boot buttons: A=pick program  B=run it")
