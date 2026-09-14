@@ -210,11 +210,12 @@ export class BaseLink {
      * bench -- one probe reported "no answer" and three identical ones straight
      * after succeeded.
      *
-     * And A RELAY IS NOT AN ADDRESS. Every robot in this fleet listens on the
-     * same channel 55 / group 114, so HELLO over the air is a broadcast and
-     * every robot in range answers it. Measured 2026-09-11 asking two USB
-     * relays for `tigez`: one came back as `vevov`, the other as `gopiv`. So
-     * each round reads the WHOLE burst of answers (see collectBanners) and
+     * And more than one robot can answer. Every robot listens on the pair its
+     * own name derives (radio.js), so a relay tuned for one robot normally
+     * hears only that one -- but two boards can share a name, and a board on
+     * firmware from before 2026-09-14 still sits on the old shared 55/114,
+     * where asking two relays for `tigez` came back as `vevov` and `gopiv`.
+     * So each round reads the WHOLE burst of answers (see collectBanners) and
      * `expect` picks this robot out of it; the rounds after that are for the
      * dropped frames.
      *

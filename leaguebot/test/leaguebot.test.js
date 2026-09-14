@@ -14,7 +14,10 @@ import {
     BASELINE_DIAMETER_MM, calibrationSnippet, correctTrackWidth, deriveCalibration,
     deriveReportedTrackWidthCm, deriveWheelDiameterMm,
 } from "../src/calibration.js";
+import crypto from "node:crypto";
+
 import { friendlyName } from "../src/discovery.js";
+import { canonicalForm, nameToValue, radioAddress, radioAddressToName } from "../src/radio.js";
 import { BaseLink, LineReassembler } from "../src/links.js";
 import { decodeKeys, isPointToPoint } from "../src/drive.js";
 import { parseSignature, positionalArgs } from "../src/term.js";
@@ -30,6 +33,43 @@ test("names a board from its chip id, as CODAL and mbdeploy do", () => {
         536019796: "vevav", 2198604104: "vitut", 2314287040: "tovez",
     };
     for (const [id, name] of Object.entries(boards)) assert.equal(friendlyName(Number(id)), name);
+});
+
+// ---- radio addresses ------------------------------------------------------
+//
+// Every vector and digest below is transcribed from radio-robot-lib
+// docs/design/radio-addressing.md, the normative spec -- not computed here.
+
+test("derives the spec's fleet and edge-case vectors, both ways", () => {
+    const vectors = {
+        zeguz: [71, 199], zetuv: [49, 250], vevov: [20, 82], tovez: [48, 29], togov: [64, 45],
+        vevav: [35, 97], gopiv: [12, 30], getez: [72, 68], zavaz: [45, 78],
+        zuzuz: [11, 15], zuzuv: [12, 16], zugag: [83, 87], zugap: [11, 88],
+        zotuz: [17, 240], zotez: [32, 255], zotev: [33, 15], tatat: [69, 247],
+    };
+    for (const [name, [channel, group]] of Object.entries(vectors)) {
+        assert.deepEqual(radioAddress(name), { channel, group }, name);
+        assert.equal(radioAddressToName(channel, group), name);
+    }
+});
+
+test("passes the spec's D2 gate and D1 over all 3125 names", () => {
+    const sha = (text) => crypto.createHash("sha256").update(text).digest("hex");
+    assert.equal(sha(canonicalForm(2)), "305d6ee08cfae978fe13e1179c6047a56e1b0b1abe23c2cb757f01461cf2d35f");
+    assert.equal(sha(canonicalForm(1)), "c22691f1c47bed3ac5317119487a30ea8fd0224d61c50bba551b1e624b548a84");
+});
+
+test("rejects what the spec rejects", () => {
+    for (const bad of ["gauti", "vevo", "vevovv", "aeiou", "", "TOVEZZ"]) {
+        assert.throws(() => nameToValue(bad), undefined, JSON.stringify(bad));
+    }
+    assert.equal(nameToValue("VEVOV"), nameToValue("vevov"));
+    assert.equal(nameToValue(" vevov "), nameToValue("vevov"));
+    assert.throws(() => radioAddressToName(11, 16));   // in range, but no name has it
+    assert.throws(() => radioAddressToName(10, 15));
+    assert.throws(() => radioAddressToName(84, 15));
+    assert.throws(() => radioAddressToName(11, 14));
+    assert.throws(() => radioAddressToName(11, 256));
 });
 
 // ---- codec ----------------------------------------------------------------
@@ -148,9 +188,11 @@ test("strips the relay echo prefix", () => {
 
 // ---- identify over a broadcast --------------------------------------------
 //
-// A relay carries HELLO to EVERY robot on channel 55 / group 114, so the
-// banners come back as a burst. These pin the two ways that burst gets
-// misread: keeping only its first line, and reporting only its last.
+// A relay carries HELLO to every board on the channel/group it is tuned to --
+// the whole fleet when everything shared 55/114, and still any board sharing a
+// name or on older firmware -- so banners can come back as a burst. These pin
+// the two ways that burst gets misread: keeping only its first line, and
+// reporting only its last.
 
 /** A relay link whose air answers each HELLO with `crowd`, in order. */
 function fakeRelay(crowd) {
@@ -401,9 +443,9 @@ test("tells arrows apart from ordinary keys", () => {
 });
 
 test("only point-to-point carriers may be driven", () => {
-    // The fleet shares channel 55 / group 114, so a relay puts every command
-    // on the air and EVERY robot in range acts on it. Reported from the bench
-    // 2026-09-12: one operator driving one robot, three robots moving. The
+    // A relay puts every command on the air, and EVERY board on that
+    // channel/group acts on it. Reported from the bench 2026-09-12, when the
+    // fleet shared 55/114: one operator driving one robot, three moving. The
     // HELLO/banner check cannot prevent this -- it settles which robot
     // ANSWERS, not which robots LISTEN.
     assert.equal(isPointToPoint({ transport: "wifi" }), true);

@@ -1,7 +1,6 @@
 // cli.js -- argument parsing and dispatch.
 
 import { calibrateCommand, connectCommand, driveCommand, probeAll, probeOne, showCommand } from "./commands.js";
-import { FLEET_CHANNEL, FLEET_GROUP } from "./resolve.js";
 
 // However the operator invoked us. The `lb` wrapper sets this so its own help
 // text does not tell people to type a command name they do not have.
@@ -18,8 +17,8 @@ ${NAME} -- find, drive and calibrate League robots.
   ${NAME} show [name]           print what is in calibration.json
 
 Options
-  --channel <n>   radio channel for the relay   (default ${FLEET_CHANNEL})
-  --group <n>     radio group for the relay     (default ${FLEET_GROUP})
+  --channel <n>   radio channel for the relay   (default: from the robot's name)
+  --group <n>     radio group for the relay     (default: from the robot's name)
   --scan <ms>     how long to browse mDNS       (default 2500)
   --dir <path>    where calibration.json lives  (default: this directory)
   --no-mdns       skip the network scan

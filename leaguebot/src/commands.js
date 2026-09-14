@@ -84,23 +84,28 @@ export async function probeAll(options) {
     // record, no USB cable here. The radio can, but only by asking -- so ask.
     const relayCount = state.relays.length + state.networkRelays.length;
     if (relayCount > 0 && options.radio !== false) {
-        console.log("\nOver the air (listening for whoever answers)...");
-        const { spec, banners } = await sweepRadio(state, options);
-        if (spec === undefined) {
+        // Every robot listens on the pair its own name derives, so the air is
+        // asked one robot at a time: each registered robot, on its own pair.
+        const askNames = [...loadDeviceRegistry(options.dir ? [options.dir] : []).byUid.values()]
+            .filter((entry) => entry.name && (entry.commonName === "robot" || entry.role === "NEZHA2"))
+            .map((entry) => entry.name);
+        console.log(`\nOver the air (each known robot on its own channel/group)...`);
+        const { relay, results } = await sweepRadio(state, askNames, options);
+        if (askNames.length === 0) {
+            console.log("  no known robots to ask");
+        } else if (relay === undefined) {
             console.log("  no relay would open");
-        } else if (banners.length === 0) {
-            console.log(`  ${spec.describe}: nothing answered`);
         } else {
-            for (const banner of banners) {
-                const already = robots.has(banner.name);
-                console.log(`  ${pad(banner.name, 8)}${banner.role ?? "-"}`
-                    + (already ? "   (also listed above)" : ""));
-                note(banner.name, "radio");
+            for (const r of results) {
+                const heard = r.banner !== null;
+                console.log(`  ${pad(r.name, 8)}${pad(`${r.channel}/${r.group}`, 9)}`
+                    + (heard ? `answered   ${r.banner.role ?? "-"}` : "no answer")
+                    + (heard && robots.has(r.name) ? "   (also listed above)" : ""));
+                if (heard) note(r.name, "radio");
             }
-            // A robot that loses every HELLO race stays invisible, so this is
-            // never a complete census -- say so rather than imply one.
-            console.log("  (whoever answered; a quiet robot can be missed -- "
-                + "'probe <name>' to check one)");
+            // Silence is not absence: a dropped frame, a robot out of range, or
+            // one still on firmware from before the 2026-09-14 radio map.
+            console.log(`  (via ${relay}; 'no answer' can be a dropped frame or older firmware)`);
         }
     } else if (relayCount > 0) {
         console.log(`\n${relayCount} relay(s) available but the radio sweep was skipped.`);
@@ -121,8 +126,8 @@ export async function probeAll(options) {
     for (const [name, hows] of robots) console.log(`  ${pad(name, 8)}${[...hows].join(", ")}`);
     for (const name of missing) console.log(`  ${pad(name, 8)}not heard (known from the registry)`);
     if (missing.length > 0) {
-        console.log("\n  'not heard' is not the same as absent: over the radio only whoever");
-        console.log("  wins a HELLO race answers, so try 'probe <name>' before believing it.");
+        console.log("\n  'not heard' is not the same as absent: a radio frame can drop, and a");
+        console.log("  robot on older firmware is not on its new pair -- try 'probe <name>'.");
     }
     return state;
 }

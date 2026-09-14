@@ -12,14 +12,24 @@
 // Calibration in particular wants the robot free to move, which is exactly why
 // WiFi is preferred and why serial is last rather than first.
 
-import { createLink, sweepBanners, traceLink } from "./links.js";
+import { createLink, traceLink } from "./links.js";
 import { explainPortError, loadDeviceRegistry, lookupRobotByName, probeUsb, scanMdns } from "./discovery.js";
+import { radioAddress } from "./radio.js";
 
-/** The channel/group this fleet's robots listen on -- test/boot.ts calls
- *  setupRadio(55, 114). A relay boots on 0/10 and hears nothing until it is
- *  moved here, so these are set on every connect rather than assumed. */
-export const FLEET_CHANNEL = 55;
-export const FLEET_GROUP = 114;
+/**
+ * The { channel, group } to tune a relay to for `name`: `--channel`/`--group`
+ * when given, else the pair the robot's own name derives (radio.js) -- which is
+ * what test/boot.ts tunes the robot to at boot. undefined when `name` is not a
+ * micro:bit name and no override was given. A relay boots on 0/10 and hears
+ * nothing until it is moved, so this is set on every connect, never assumed.
+ */
+export function radioAddressFor(name, options = {}) {
+    let derived;
+    try { derived = radioAddress(name); } catch { derived = undefined; }
+    const channel = options.channel ?? derived?.channel;
+    const group = options.group ?? derived?.group;
+    return channel === undefined || group === undefined ? undefined : { channel, group };
+}
 
 /**
  * Everything currently reachable, by name.
@@ -69,7 +79,8 @@ export async function survey(options = {}) {
  * Every way to reach `name`, best first. Pure: builds specs, opens nothing.
  */
 export function candidatesFor(name, state, options = {}) {
-    const { channel = FLEET_CHANNEL, group = FLEET_GROUP, pointToPoint = false } = options;
+    const { pointToPoint = false } = options;
+    const address = radioAddressFor(name, options);
     const candidates = [];
 
     for (const robot of state.wifiRobots) {
@@ -85,34 +96,32 @@ export function candidatesFor(name, state, options = {}) {
         });
     }
 
-    // A relay is a path to ANY robot in range, not to one named robot, so
-    // every relay is a candidate for every name. Whether this robot is
-    // actually listening is only knowable by trying -- which is why the
-    // banner check in connectTo() is not optional on these.
+    // A relay is a path to any robot in range once it is tuned to that robot's
+    // pair, so every relay is a candidate for every name that derives one.
+    // Whether this robot is actually listening is only knowable by trying --
+    // which is why the banner check in connectTo() is not optional on these.
     //
     // A relay on this machine's USB comes before one on the network: same
     // radio, one less hop, and it does not stop working when the LAN does.
-    // A relay carries a BROADCAST: the fleet shares one channel, so every robot
-    // in range acts on what is sent. Callers about to command MOTION ask for
+    // A relay still puts what is sent on the AIR: every board on that
+    // channel/group acts on it. Callers about to command MOTION ask for
     // point-to-point only and get no relay candidates at all -- see
     // POINT_TO_POINT in drive.js for the incident that put this here.
-    if (!pointToPoint) for (const relay of state.relays) {
+    if (!pointToPoint && address) for (const relay of state.relays) {
         candidates.push({
             transport: "radio",
             portPath: relay.portPath,
-            channel,
-            group,
-            describe: `radio via ${relay.name ?? relay.portPath} (ch ${channel}/grp ${group})`,
+            ...address,
+            describe: `radio via ${relay.name ?? relay.portPath} (ch ${address.channel}/grp ${address.group})`,
         });
     }
-    if (!pointToPoint) for (const relay of state.networkRelays) {
+    if (!pointToPoint && address) for (const relay of state.networkRelays) {
         candidates.push({
             transport: "netradio",
             host: relay.host,
             port: relay.port,
-            channel,
-            group,
-            describe: `radio via ${relay.name} on ${relay.host}:${relay.port} (ch ${channel}/grp ${group})`,
+            ...address,
+            describe: `radio via ${relay.name} on ${relay.host}:${relay.port} (ch ${address.channel}/grp ${address.group})`,
         });
     }
 
@@ -174,36 +183,54 @@ export async function connectTo(name, options = {}) {
 }
 
 /**
- * Ask the air what is out there, through the first relay that works.
+ * Ask each of `names`, on its own pair, whether it is on the air.
  *
  * This is the only way to find a robot that nothing announces: no mDNS record,
- * no USB cable here, just a board powered up somewhere in radio range. Exactly
- * the state gopiv was in when `probe` could not list it and `probe gopiv`
- * found it immediately.
+ * no USB cable here, just a board powered up somewhere in radio range -- the
+ * state gopiv was in when `probe` could not list it and `probe gopiv` found it
+ * at once. Every robot listens on the pair its own name derives, so there is
+ * no one channel to call out on: the relay is tuned per name. A relay cannot
+ * leave its data plane without a reset, so that is one link -- one handshake
+ * -- per name, all through the first relay that opens.
+ *
+ * Resolves { relay, results: [{ name, channel, group, banner }] }; `relay` is
+ * undefined when no relay would open, and `banner` is null for no answer.
  */
-export async function sweepRadio(state, options = {}) {
+export async function sweepRadio(state, names, options = {}) {
     const relays = [
         ...state.relays.map((relay) => ({
-            transport: "radio", portPath: relay.portPath,
-            channel: options.channel ?? FLEET_CHANNEL, group: options.group ?? FLEET_GROUP,
-            describe: `radio via ${relay.name ?? relay.portPath}`,
+            transport: "radio", portPath: relay.portPath, label: relay.name ?? relay.portPath,
         })),
         ...state.networkRelays.map((relay) => ({
-            transport: "netradio", host: relay.host, port: relay.port,
-            channel: options.channel ?? FLEET_CHANNEL, group: options.group ?? FLEET_GROUP,
-            describe: `radio via ${relay.name}`,
+            transport: "netradio", host: relay.host, port: relay.port, label: relay.name,
         })),
     ];
-    for (const spec of relays) {
-        const link = createLink(spec);
-        try {
-            await link.connect();
-            const banners = await sweepBanners(link, options.sweep);
-            await link.close().catch(() => {});
-            return { spec, banners };
-        } catch {
-            await link.close().catch(() => {});
+    let chosen;
+    const results = [];
+    for (const name of names) {
+        // Derived only: a --channel override names ONE pair, not one per robot.
+        const address = radioAddressFor(name);
+        if (address === undefined) continue;
+        const result = { name, ...address, banner: null };
+        for (const base of chosen ? [chosen] : relays) {
+            const link = createLink({
+                ...base, ...address,
+                describe: `radio via ${base.label} (ch ${address.channel}/grp ${address.group})`,
+            });
+            if (options.verbose) traceLink(link, name);
+            try {
+                await link.connect();
+                chosen = base;
+                const banner = await link.identify({ expect: name, attempts: 2 });
+                result.banner = banner?.name === name ? banner : null;
+                break;
+            } catch {
+                // This relay would not open; the next one might.
+            } finally {
+                await link.close().catch(() => {});
+            }
         }
+        results.push(result);
     }
-    return { spec: undefined, banners: [] };
+    return { relay: chosen?.label, results };
 }

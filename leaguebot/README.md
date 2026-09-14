@@ -44,12 +44,14 @@ first thing to reach for when a robot "does not answer"; `--no-usb` /
 3. **USB serial** — always works, but the robot is tethered, and both
    calibration routines drive it several metres.
 
-### A relay is not an address
+### A relay is tuned per robot
 
-Every robot in the fleet listens on the same channel 55 / group 114, so `HELLO`
-over the air is effectively a **broadcast** and whichever robot answers first
-wins. Asking two USB relays for `tigez` came back as `vevov` from one and
-`gopiv` from the other — both perfectly healthy links, to the wrong robot.
+Every robot listens on the radio channel and group its own five-letter name
+derives — `channel = 11 + n % 73`, `group = 15 + n % 241`, as radio-robot-lib's
+`docs/design/radio-addressing.md` specifies — so `leaguebot` tunes the relay to
+that pair for each robot it talks to (`--channel` / `--group` override it). A
+robot still on firmware from before 2026-09-14 sits on the old shared
+55 / 114 and will not answer on its own pair until it is reflashed.
 
 So every connection is checked against the name in the boot banner, and over a
 relay `leaguebot` keeps asking until the robot you actually named is the one

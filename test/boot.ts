@@ -16,31 +16,38 @@
 // and it cannot be undone without a restart.
 //
 // Every robot has its OWN radio address, derived from the name burned into
-// its chip -- there is no shared fleet channel. This line used to hardcode
-// 55/114, which is tigez's address, so every board running this image
-// answered on tigez's channel and a relay could not reach one robot alone.
-// MEASURED 2026-09-12 through the torture relay: on 55/114 gopiv, tovez and
-// vevov all answered ID; on tovez's own 55/108, silence.
-// To reach one robot, point the relay at it by name: `!N <name>`.
+// its chip -- there is no shared fleet channel. (This line once hardcoded
+// 55/114, tigez's old address, so every board running this image answered
+// on tigez's channel and a relay could not reach one robot alone.)
+// To reach one robot, point a relay at it by name: `!N <name>`.
+//
 // [channel, group] derived from a micro:bit's five-letter name, or [] if the
-// name is not one. Same map as pxt-nezha-diffdrive's make_deploy.py
-// derive_radio_from_name() and the relay's `!N`: the name is DEVICEID[1] in
-// base 5 (consonants zvgpt at positions 0/2/4, vowels uoiea at 1/3,
-// big-endian); channel = 25 + 2*(n % 25), group = 1 + n/25 with 10 skipped.
-function radioAddressFromName(name: string): number[] {
+// name is not one. NORMATIVE SPEC: radio-robot-lib
+// docs/design/radio-addressing.md -- the name is DEVICEID[1] in base 5
+// (consonants zvgpt at positions 0/2/4, vowels uoiea at 1/3, first letter
+// most significant), then channel = 11 + n % 73 (11..83) and
+// group = 15 + n % 241 (15..255). The relay's `!N`, mbrelay's registry and
+// robot-console compute the same pair; tools/radio-address-dump runs this
+// exact function against the spec's digest, so change it only with the spec.
+// (Until 2026-09-14 this was the retired 25-channel map, 25 + 2*(n % 25).)
+function nameValue(name: string): number {
     const consonants = "zvgpt"
     const vowels = "uoiea"
-    if (name.length != 5) return []
+    if (name.length != 5) return -1
     let n = 0
     for (let i = 0; i < 5; i++) {
         const alphabet = i % 2 == 0 ? consonants : vowels
         const digit = alphabet.indexOf(name.charAt(i).toLowerCase())
-        if (digit < 0) return []
+        if (digit < 0) return -1
         n = n * 5 + digit
     }
-    let group = 1 + Math.idiv(n, 25)
-    if (group >= 10) group += 1
-    return [25 + 2 * (n % 25), group]
+    return n
+}
+
+function radioAddressFromName(name: string): number[] {
+    const n = nameValue(name)
+    if (n < 0) return []
+    return [11 + n % 73, 15 + n % 241]
 }
 
 const RADIO_ADDRESS = radioAddressFromName(control.deviceName())

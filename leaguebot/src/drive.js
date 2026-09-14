@@ -20,10 +20,11 @@
 /**
  * Transports that reach EXACTLY ONE robot.
  *
- * A radio relay reaches every robot in range: the fleet shares channel 55 /
- * group 114, so a line put on the air is a BROADCAST and every robot acts on
- * it. For a read that is harmless. For MOVE_V it is not -- reported from the
- * bench 2026-09-12, one operator driving one robot and three of them moving.
+ * A radio relay reaches every board tuned to the channel/group it is on, so a
+ * line put on the air is heard by all of them: boards sharing a name, or on
+ * firmware from before 2026-09-14, which all sat on the shared 55/114. For a
+ * read that is harmless. For MOVE_V it is not -- reported from the bench
+ * 2026-09-12, one operator driving one robot and three of them moving.
  *
  * The HELLO/banner check that connectTo() does cannot help here: it settles
  * which robot ANSWERS, not which robots LISTEN, and nothing in the wire
@@ -100,11 +101,11 @@ function render(state, banner) {
  */
 export function driveWithKeys(link, name, spec) {
     // Refuse to put motion on a shared carrier. See POINT_TO_POINT above: over
-    // a relay this drives every robot in radio range, not the one named.
+    // a relay every board tuned to that channel/group acts on the command.
     if (spec !== undefined && !isPointToPoint(spec)) {
         console.log(`\n  Refusing to drive over ${spec.describe}.`);
-        console.log("  That is a radio relay, and the fleet shares one channel -- every");
-        console.log("  robot in range would execute these commands, not just " + name + ".");
+        console.log("  That is a radio relay: every board on that channel/group would");
+        console.log("  execute these commands, not necessarily just " + name + ".");
         console.log("  Connect over WiFi, the farm's TCP link, or a USB cable to drive.");
         return Promise.resolve();
     }

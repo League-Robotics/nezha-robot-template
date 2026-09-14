@@ -205,7 +205,9 @@ jobs:
               echo "Ask a flashed board what it is running with \`mbdeploy connect <board> ID\`;"
               echo "the second field is the profile above."
               echo
-              echo "The robot answers on the **radio** (channel 55 / group 114)."
+              echo "The robot answers on the **radio**, on the channel and group its own name"
+              echo "derives: channel 11 + n % 73, group 15 + n % 241 (radio-robot-lib"
+              echo "\`docs/design/radio-addressing.md\`). Tune a relay with \`!N <name>\`."
               echo
               echo "WiFi is compiled in but inert in this image: \`test/boot.ts\` reads its"
               echo "credentials from \`test/secrets.ts\`, which is gitignored, and CI seeds"
