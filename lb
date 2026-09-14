@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./lb probe                 # every robot on USB and on the network
-#   ./lb probe gopiv           # which paths reach one robot
+#   ./lb probe gopiv           # which paths reach one robot, and its firmware
 #   ./lb connect gopiv         # menu: list the robot's functions, run one
 #   ./lb calibrate gopiv       # the wheel and turn calibration runs
 #   ./lb show                  # what is in calibration.json
@@ -22,11 +22,12 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BOT="$HERE/leaguebot"
 
-# The dependencies are native (serialport) and are NOT part of the pxt project's
-# own node_modules, so a fresh clone has to install them once. Doing it here
-# rather than making the operator remember `npm run leaguebot:setup` -- the
-# first thing anyone types is `./lb probe`, not the setup command.
-if [ ! -d "$BOT/node_modules/serialport" ]; then
+# The dependencies are native (serialport, node-hid) and are NOT part of the pxt
+# project's own node_modules, so a fresh clone has to install them once. Doing
+# it here rather than making the operator remember `npm run leaguebot:setup` --
+# the first thing anyone types is `./lb probe`, not the setup command. Checked
+# per package, so a checkout that predates node-hid picks it up too.
+if [ ! -d "$BOT/node_modules/serialport" ] || [ ! -d "$BOT/node_modules/node-hid" ]; then
     echo "lb: installing leaguebot's dependencies (first run only)..." >&2
     npm install --prefix "$BOT" --no-audit --no-fund >&2
 fi

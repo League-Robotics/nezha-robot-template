@@ -14,9 +14,23 @@ import {
     BASELINE_DIAMETER_MM, calibrationSnippet, correctTrackWidth, deriveCalibration,
     deriveReportedTrackWidthCm, deriveWheelDiameterMm,
 } from "../src/calibration.js";
+import { friendlyName } from "../src/discovery.js";
 import { BaseLink, LineReassembler } from "../src/links.js";
+import { decodeKeys, isPointToPoint } from "../src/drive.js";
 import { parseSignature, positionalArgs } from "../src/term.js";
 import { classifyLine, decodeLine, encodeLine, parseBanner, Session } from "../src/wire.js";
+
+// ---- board names ----------------------------------------------------------
+
+test("names a board from its chip id, as CODAL and mbdeploy do", () => {
+    // Real FICR.DEVICEID[1] values: the first four from config/devices.json,
+    // the last two read over SWD from the boards on the bench on 2026-09-13.
+    const boards = {
+        2175407711: "gopiv", 3527777815: "tigez", 1491116212: "zapig",
+        536019796: "vevav", 2198604104: "vitut", 2314287040: "tovez",
+    };
+    for (const [id, name] of Object.entries(boards)) assert.equal(friendlyName(Number(id)), name);
+});
 
 // ---- codec ----------------------------------------------------------------
 
@@ -176,6 +190,61 @@ test("with no name to expect, the first banner still wins", async () => {
     assert.equal(banner.name, "tigez");
 });
 
+test("the banner keeps the line the board actually wrote", async () => {
+    const link = fakeRelay(["gopiv"]);
+    const banner = await link.identify({ expect: "gopiv", attempts: 1 });
+    assert.equal(banner.raw, "device NEZHA2 robot gopiv 1");
+});
+
+// ---- ID over a broadcast --------------------------------------------------
+//
+// ID is a broadcast too: every robot answers `id ... <name>`, so the reply
+// has to be picked by name, and the frame can be dropped like any other.
+
+/** A relay link whose air answers each ID with one `id` line per robot. */
+function fakeRelayIds(crowd, { dropFirst = 0 } = {}) {
+    const link = new BaseLink({ transport: "radio", channel: 55, group: 114 });
+    link.inCommandPlane = false;
+    let asked = 0;
+    link._send = (text) => {
+        if (!/^ID\b/.test(text)) return;
+        if (asked++ < dropFirst) return;                 // lost on the air
+        crowd.forEach((name, i) => {
+            setTimeout(() => link._ingest(Buffer.from(
+                `id diffdrive ${name}-profile 1.20260912.${i + 1} ${name}\n`)), i + 1);
+        });
+    };
+    return link;
+}
+
+test("picks this robot's id line out of the crowd", async () => {
+    const link = fakeRelayIds(["tigez", "gopiv"]);
+    const identity = await link.identityOf({ expect: "gopiv", waitMs: 200 });
+    assert.equal(identity.name, "gopiv");
+    assert.equal(identity.version, "1.20260912.2");
+    assert.equal(identity.profile, "gopiv-profile");
+    assert.equal(identity.drivetrain, "diffdrive");
+    assert.equal(identity.raw, "id diffdrive gopiv-profile 1.20260912.2 gopiv");
+});
+
+test("asks again when the first ID is lost on the air", async () => {
+    const link = fakeRelayIds(["gopiv"], { dropFirst: 1 });
+    const identity = await link.identityOf({ expect: "gopiv", waitMs: 100 });
+    assert.equal(identity?.version, "1.20260912.1");
+});
+
+test("an id line with no name is not trusted over a relay", async () => {
+    const link = new BaseLink({ transport: "radio", channel: 55, group: 114 });
+    link.inCommandPlane = false;
+    link._send = () => setTimeout(() => link._ingest(Buffer.from("id diffdrive p 1.0.0\n")), 1);
+    assert.equal(await link.identityOf({ expect: "gopiv", attempts: 1, waitMs: 100 }), null);
+    // ...but on a cable there is only one robot on the line, so it counts.
+    const cable = new BaseLink({ transport: "serial", portPath: "/dev/x" });
+    cable._send = () => setTimeout(() => cable._ingest(Buffer.from("id diffdrive p 1.0.0\n")), 1);
+    const identity = await cable.identityOf({ expect: "gopiv", waitMs: 100 });
+    assert.equal(identity?.version, "1.0.0");
+});
+
 // ---- calibration parsing --------------------------------------------------
 
 const CALX_LINES = [
@@ -306,4 +375,40 @@ test("recovers the track width when the measured line is dropped", () => {
     assert.equal(deriveReportedTrackWidthCm(onlyApply), 11.72, "from begin + apply");
 
     assert.equal(deriveReportedTrackWidthCm(["CALA:pass clockwise"]), undefined);
+});
+
+
+// ---- cursor-key driving ---------------------------------------------------
+
+const ESC = String.fromCharCode(27);
+
+test("decodes several arrow keys out of one chunk", () => {
+    // A held key repeats faster than the event loop drains stdin, so one chunk
+    // can carry several presses. Reading only the first makes a fast repeat
+    // look like a slow one, and the robot stutters as the axis decays between
+    // ticks that should have renewed it.
+    assert.deepEqual(decodeKeys(Buffer.from(ESC + "[A" + ESC + "[A" + ESC + "[D")), [
+        { arrow: "A" }, { arrow: "A" }, { arrow: "D" },
+    ]);
+});
+
+test("tells arrows apart from ordinary keys", () => {
+    assert.deepEqual(decodeKeys(Buffer.from(ESC + "[C")), [{ arrow: "C" }]);
+    assert.deepEqual(decodeKeys(Buffer.from(" ")), [{ char: " " }]);
+    assert.deepEqual(decodeKeys(Buffer.from("q")), [{ char: "q" }]);
+    // A bare ESC is the quit key, not the start of a truncated arrow.
+    assert.deepEqual(decodeKeys(Buffer.from(ESC)), [{ char: ESC }]);
+});
+
+test("only point-to-point carriers may be driven", () => {
+    // The fleet shares channel 55 / group 114, so a relay puts every command
+    // on the air and EVERY robot in range acts on it. Reported from the bench
+    // 2026-09-12: one operator driving one robot, three robots moving. The
+    // HELLO/banner check cannot prevent this -- it settles which robot
+    // ANSWERS, not which robots LISTEN.
+    assert.equal(isPointToPoint({ transport: "wifi" }), true);
+    assert.equal(isPointToPoint({ transport: "tcp" }), true);
+    assert.equal(isPointToPoint({ transport: "serial" }), true);
+    assert.equal(isPointToPoint({ transport: "radio" }), false);
+    assert.equal(isPointToPoint({ transport: "netradio" }), false);
 });

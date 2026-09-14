@@ -12,7 +12,7 @@
 // Calibration in particular wants the robot free to move, which is exactly why
 // WiFi is preferred and why serial is last rather than first.
 
-import { createLink, traceLink } from "./links.js";
+import { createLink, sweepBanners, traceLink } from "./links.js";
 import { explainPortError, loadDeviceRegistry, lookupRobotByName, probeUsb, scanMdns } from "./discovery.js";
 
 /** The channel/group this fleet's robots listen on -- test/boot.ts calls
@@ -57,9 +57,8 @@ export async function survey(options = {}) {
         usb: usbDevices,
         wifiRobots: network.robots,
         networkRelays: network.relays,
-        registryFile: usbDevices.registryFile,
-        // Only boards we can actually OPEN can serve as a relay: a remembered
-        // name on a busy port is a fact about the board, not an available link.
+        // Only boards we can actually OPEN can serve as a relay: a named board
+        // on a busy port is a fact about the board, not an available link.
         relays: usbDevices.filter((d) => d.type === "relay" && !d.error),
         usbRobots: usbDevices.filter((d) => d.type === "robot" && !d.error),
         usbAll: usbDevices,
@@ -69,7 +68,8 @@ export async function survey(options = {}) {
 /**
  * Every way to reach `name`, best first. Pure: builds specs, opens nothing.
  */
-export function candidatesFor(name, state, { channel = FLEET_CHANNEL, group = FLEET_GROUP } = {}) {
+export function candidatesFor(name, state, options = {}) {
+    const { channel = FLEET_CHANNEL, group = FLEET_GROUP, pointToPoint = false } = options;
     const candidates = [];
 
     for (const robot of state.wifiRobots) {
@@ -92,7 +92,11 @@ export function candidatesFor(name, state, { channel = FLEET_CHANNEL, group = FL
     //
     // A relay on this machine's USB comes before one on the network: same
     // radio, one less hop, and it does not stop working when the LAN does.
-    for (const relay of state.relays) {
+    // A relay carries a BROADCAST: the fleet shares one channel, so every robot
+    // in range acts on what is sent. Callers about to command MOTION ask for
+    // point-to-point only and get no relay candidates at all -- see
+    // POINT_TO_POINT in drive.js for the incident that put this here.
+    if (!pointToPoint) for (const relay of state.relays) {
         candidates.push({
             transport: "radio",
             portPath: relay.portPath,
@@ -101,7 +105,7 @@ export function candidatesFor(name, state, { channel = FLEET_CHANNEL, group = FL
             describe: `radio via ${relay.name ?? relay.portPath} (ch ${channel}/grp ${group})`,
         });
     }
-    for (const relay of state.networkRelays) {
+    if (!pointToPoint) for (const relay of state.networkRelays) {
         candidates.push({
             transport: "netradio",
             host: relay.host,
@@ -136,7 +140,10 @@ export async function connectTo(name, options = {}) {
     const state = options.state ?? await survey({ ...options, names: [name, ...(options.names ?? [])] });
     const candidates = candidatesFor(name, state, options);
     if (candidates.length === 0) {
-        throw new Error(`no way to reach '${name}' -- run 'leaguebot probe' to see what is around`);
+        throw new Error(options.pointToPoint
+            ? `no point-to-point link to '${name}'. Driving needs WiFi, the farm's`
+              + " TCP link, or a USB cable -- a radio relay would drive EVERY robot in range."
+            : `no way to reach '${name}' -- run 'leaguebot probe' to see what is around`);
     }
 
     const failures = [];
@@ -164,4 +171,39 @@ export async function connectTo(name, options = {}) {
     }
 
     throw new Error(`could not reach '${name}':\n  ${failures.join("\n  ")}`);
+}
+
+/**
+ * Ask the air what is out there, through the first relay that works.
+ *
+ * This is the only way to find a robot that nothing announces: no mDNS record,
+ * no USB cable here, just a board powered up somewhere in radio range. Exactly
+ * the state gopiv was in when `probe` could not list it and `probe gopiv`
+ * found it immediately.
+ */
+export async function sweepRadio(state, options = {}) {
+    const relays = [
+        ...state.relays.map((relay) => ({
+            transport: "radio", portPath: relay.portPath,
+            channel: options.channel ?? FLEET_CHANNEL, group: options.group ?? FLEET_GROUP,
+            describe: `radio via ${relay.name ?? relay.portPath}`,
+        })),
+        ...state.networkRelays.map((relay) => ({
+            transport: "netradio", host: relay.host, port: relay.port,
+            channel: options.channel ?? FLEET_CHANNEL, group: options.group ?? FLEET_GROUP,
+            describe: `radio via ${relay.name}`,
+        })),
+    ];
+    for (const spec of relays) {
+        const link = createLink(spec);
+        try {
+            await link.connect();
+            const banners = await sweepBanners(link, options.sweep);
+            await link.close().catch(() => {});
+            return { spec, banners };
+        } catch {
+            await link.close().catch(() => {});
+        }
+    }
+    return { spec: undefined, banners: [] };
 }

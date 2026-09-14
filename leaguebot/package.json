@@ -4,10 +4,15 @@
   "private": true,
   "type": "module",
   "description": "Command-line tool for finding, driving and calibrating League robots over USB, radio relay or WiFi.",
-  "bin": { "leaguebot": "./bin/leaguebot.js" },
+  "bin": {
+    "leaguebot": "./bin/leaguebot.js"
+  },
   "dependencies": {
     "bonjour-service": "^1.4.4",
+    "node-hid": "^3.4.0",
     "serialport": "^13.0.0"
   },
-  "engines": { "node": ">=22.13" }
+  "engines": {
+    "node": ">=22.13"
+  }
 }

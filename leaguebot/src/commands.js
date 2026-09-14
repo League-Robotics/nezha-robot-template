@@ -4,10 +4,10 @@ import {
     BASELINE_DIAMETER_MM, calibrationSnippet, deriveCalibration,
     deriveReportedTrackWidthCm, deriveWheelDiameterMm, loadStore, saveCalibration,
 } from "./calibration.js";
-import path from "node:path";
 
-import { explainPortError } from "./discovery.js";
-import { candidatesFor, connectTo, survey } from "./resolve.js";
+import { explainPortError, loadDeviceRegistry } from "./discovery.js";
+import { driveWithKeys, isPointToPoint } from "./drive.js";
+import { candidatesFor, connectTo, survey, sweepRadio } from "./resolve.js";
 import { ask, closeTerm, confirm, parseSignature, positionalArgs, pressSpace } from "./term.js";
 
 const pad = (text, width) => String(text ?? "").padEnd(width);
@@ -22,28 +22,21 @@ export async function probeAll(options) {
     if (state.usb.length === 0) {
         console.log("  (no micro:bits attached)");
     } else {
-        console.log(`  ${pad("NAME", 8)}${pad("TYPE", 8)}${pad("ROLE", 14)}${pad("PORT", 26)}HOW`);
+        console.log(`  ${pad("NAME", 8)}${pad("TYPE", 8)}${pad("ROLE", 14)}PORT`);
         for (const device of state.usb) {
-            const name = device.name ?? "?";
-            // "asked" means the board itself answered; "remembered" means the
-            // name came out of the registry and nothing verified it.
-            const how = device.source === "banner" ? "asked it"
-                : device.source === "registry" ? "remembered, port busy"
-                : device.error ?? "not identified";
-            console.log(`  ${pad(name, 8)}${pad(device.type, 8)}${pad(device.role ?? "-", 14)}`
-                + `${pad(device.portPath, 26)}${how}`);
-        }
-        const busy = state.usb.filter((d) => d.error);
-        if (busy.length > 0) {
-            console.log(`\n  ${busy.length} of ${state.usb.length} ports are held by another program`);
-            console.log("  (robot-console's dev server, mbdeploy serve, or a serial monitor).");
-            if (state.registryFile) {
-                const shown = path.relative(process.cwd(), state.registryFile) || state.registryFile;
-                console.log(`  Names came from ${shown}, not from the board itself,`);
-                console.log("  so they are last-known rather than confirmed.");
-            }
-            console.log("  A busy board cannot be connected to or used as a relay -- stop");
-            console.log("  whatever is holding it first.");
+            // The name is read off the chip, so it holds even on a busy port.
+            // "busy" is all the row says about that: the port is held by
+            // robot-console, mbdeploy serve or a serial monitor, so this board
+            // cannot be connected to or used as a relay until that stops.
+            // A missing name says why, briefly: on Linux the usual cause is no
+            // udev rule giving this user the CMSIS-DAP HID interface.
+            const status = [
+                device.error === undefined ? "" : /^in use/.test(device.error) ? "busy" : device.error,
+                device.nameError ? `name unread: ${device.nameError}` : "",
+            ].filter(Boolean).join("; ");
+            const row = `  ${pad(device.name ?? "?", 8)}${pad(device.type, 8)}${pad(device.role ?? "-", 14)}`
+                + `${pad(device.portPath, 26)}${status}`;
+            console.log(row.trimEnd());
         }
     }
 
@@ -86,20 +79,50 @@ export async function probeAll(options) {
         note(d.name, d.error ? "usb (busy)" : "usb");
     }
 
-    console.log("\nRobots:");
-    if (robots.size === 0) {
-        console.log("  none found");
-    } else {
-        for (const [name, hows] of robots) console.log(`  ${pad(name, 8)}${[...hows].join(", ")}`);
+
+    // Nothing above can see a robot that simply is not announced: no mDNS
+    // record, no USB cable here. The radio can, but only by asking -- so ask.
+    const relayCount = state.relays.length + state.networkRelays.length;
+    if (relayCount > 0 && options.radio !== false) {
+        console.log("\nOver the air (listening for whoever answers)...");
+        const { spec, banners } = await sweepRadio(state, options);
+        if (spec === undefined) {
+            console.log("  no relay would open");
+        } else if (banners.length === 0) {
+            console.log(`  ${spec.describe}: nothing answered`);
+        } else {
+            for (const banner of banners) {
+                const already = robots.has(banner.name);
+                console.log(`  ${pad(banner.name, 8)}${banner.role ?? "-"}`
+                    + (already ? "   (also listed above)" : ""));
+                note(banner.name, "radio");
+            }
+            // A robot that loses every HELLO race stays invisible, so this is
+            // never a complete census -- say so rather than imply one.
+            console.log("  (whoever answered; a quiet robot can be missed -- "
+                + "'probe <name>' to check one)");
+        }
+    } else if (relayCount > 0) {
+        console.log(`\n${relayCount} relay(s) available but the radio sweep was skipped.`);
     }
 
-    // A relay reaches ANY robot in range, and nothing announces those, so an
-    // empty or short list above is not evidence that no other robot is out
-    // there. Say so rather than let it read as "no robots".
-    const relayCount = state.relays.length + state.networkRelays.length;
-    if (relayCount > 0) {
-        console.log(`\n${relayCount} relay(s) available, so robots not listed above may still`);
-        console.log("be reachable over the air -- try 'probe <name>' for one you expect.");
+    // Robots we KNOW about that nothing found. Naming them is the point: a
+    // robot that is powered off, out of radio range, or simply lost every
+    // HELLO race is otherwise just absent from the listing, which reads as
+    // "leaguebot lost it" rather than "it did not answer". gopiv sat in
+    // exactly that hole -- reachable by name over the radio, invisible here.
+    const known = [...loadDeviceRegistry(options.dir ? [options.dir] : []).byUid.values()]
+        .filter((entry) => entry.name && (entry.commonName === "robot" || entry.role === "NEZHA2"))
+        .map((entry) => entry.name);
+    const missing = known.filter((name) => !robots.has(name));
+
+    console.log("\nRobots:");
+    if (robots.size === 0) console.log("  none answered");
+    for (const [name, hows] of robots) console.log(`  ${pad(name, 8)}${[...hows].join(", ")}`);
+    for (const name of missing) console.log(`  ${pad(name, 8)}not heard (known from the registry)`);
+    if (missing.length > 0) {
+        console.log("\n  'not heard' is not the same as absent: over the radio only whoever");
+        console.log("  wins a HELLO race answers, so try 'probe <name>' before believing it.");
     }
     return state;
 }
@@ -134,6 +157,10 @@ export async function probeOne(name, options) {
             } else {
                 console.log("YES");
                 reachable.push(spec);
+                // Say what is running there, once, under the first path that
+                // reached it: the hello line as the board wrote it, and the
+                // ID reply, which is where the firmware version lives.
+                if (reachable.length === 1) await describeRobot(link, name, banner);
             }
         } catch (error) {
             console.log(explainPortError(error));
@@ -154,6 +181,28 @@ export async function probeOne(name, options) {
         console.log(`leaguebot would use: ${reachable[0].describe}`);
     }
     return { name, reachable: reachable.map((spec) => spec.transport) };
+}
+
+/**
+ * Print the robot's own account of itself: the hello banner verbatim, then
+ * the `id` reply verbatim and decoded. `probe <name>` exists to answer "is it
+ * there, and what is on it" -- the version is the second half of that.
+ */
+async function describeRobot(link, name, banner) {
+    const say = (label, text) => console.log(`      ${pad(label, 7)}${text}`);
+    if (banner.raw) say("hello:", banner.raw);
+    const identity = await link.identityOf({ expect: name });
+    if (identity === null) {
+        say("id:", "(no reply to ID)");
+        return;
+    }
+    say("id:", identity.raw);
+    const parts = [];
+    if (identity.version) parts.push(`firmware ${identity.version}`);
+    if (identity.profile) parts.push(`profile ${identity.profile}`);
+    if (identity.drivetrain) parts.push(`drivetrain ${identity.drivetrain}`);
+    if (banner.serial !== undefined) parts.push(`serial ${banner.serial}`);
+    if (parts.length > 0) say("", parts.join(", "));
 }
 
 // ---- connect --------------------------------------------------------------
@@ -244,39 +293,72 @@ export async function connectCommand(name, options) {
     console.log(`\nConnected to ${banner.name} (${banner.role}) over ${spec.describe}`);
     link.onError((error) => console.error(`  link error: ${error.message}`));
 
+    // Ask up front what this robot can do, so the menu can offer the
+    // calibrations only when the robot actually carries them. A hex without
+    // calibratex.ts in it has no `calx` to run, and an entry that always
+    // appears would just fail on those.
+    console.log("\n  Asking the robot what it can run...");
+    const functions = await listFunctions(link);
+    const has = (verb) => functions.some((fn) => fn.name === verb);
+
     try {
         for (;;) {
-            console.log("\n  1) Functions      run one of the robot's programs");
-            console.log("  2) Status         ask the robot how it is");
-            console.log("  3) Watch          print everything it says");
-            console.log("  4) Send a line    type a raw wire command");
-            console.log("  5) Stop           STOP the drive right now");
-            console.log("  0) Quit");
-            const choice = await ask("\n  > ");
-
-            // null is EOF -- stdin closed, so there is nobody left to ask.
-            if (choice === null || choice === "0" || choice === "q") break;
-            if (choice === "1") await functionsMenu(link);
-            else if (choice === "2") {
-                const off = link.onRawLine((line) => console.log(`  < ${line}`));
-                link.sendUnsequenced("STATUS");
-                await new Promise((resolve) => setTimeout(resolve, 1200));
-                off();
-            } else if (choice === "3") await watchUntilEnter(link);
-            else if (choice === "4") {
-                const text = await ask("  line: ");
-                if (text) {
+            // Built as a list rather than printed literally: the calibration
+            // entries come and go with the robot's own function registry, and
+            // hand-numbered menu lines drift the moment one is conditional.
+            const entries = [
+                { label: "Drive", help: "steer it with the cursor keys",
+                  run: () => driveWithKeys(link, name, spec) },
+                { label: "Functions", help: `run one of its ${functions.length} programs`,
+                  run: () => functionsMenu(link, functions) },
+            ];
+            if (has("calx")) {
+                entries.push({
+                    label: "Calibrate X", help: "distance -- the 90 cm track",
+                    run: () => menuCalibration(link, spec, name, options, "wheel"),
+                });
+            }
+            if (has("cala")) {
+                entries.push({
+                    label: "Calibrate angle", help: "rotation -- spin on the cross",
+                    run: () => menuCalibration(link, spec, name, options, "turn"),
+                });
+            }
+            entries.push(
+                { label: "Status", help: "ask the robot how it is", run: async () => {
+                    const off = link.onRawLine((line) => console.log(`  < ${line}`));
+                    link.sendUnsequenced("STATUS");
+                    await new Promise((resolve) => setTimeout(resolve, 1200));
+                    off();
+                } },
+                { label: "Watch", help: "print everything it says",
+                  run: () => watchUntilEnter(link) },
+                { label: "Send a line", help: "type a raw wire command", run: async () => {
+                    const text = await ask("  line: ");
+                    if (!text) return;
                     const off = link.onRawLine((line) => console.log(`  < ${line}`));
                     link.sendLine(text);
                     await new Promise((resolve) => setTimeout(resolve, 1500));
                     off();
-                }
-            } else if (choice === "5") {
-                link.sendCommand("STOP");
-                console.log("  STOP sent.");
-            } else if (choice !== "") {
-                console.log("  ?");
-            }
+                } },
+                { label: "Stop", help: "STOP the drive right now", run: async () => {
+                    link.sendCommand("STOP");
+                    console.log("  STOP sent.");
+                } },
+            );
+
+            console.log("");
+            entries.forEach((entry, i) => {
+                console.log(`  ${i + 1}) ${entry.label.padEnd(16)}${entry.help}`);
+            });
+            console.log("  0) Quit");
+
+            const choice = await ask("\n  > ");
+            // null is EOF -- stdin closed, so there is nobody left to ask.
+            if (choice === null || choice === "0" || choice === "q") break;
+            const picked = entries[Number(choice) - 1];
+            if (picked) await picked.run();
+            else if (choice !== "") console.log("  ?");
         }
     } finally {
         await link.close().catch(() => {});
@@ -284,9 +366,33 @@ export async function connectCommand(name, options) {
     }
 }
 
-async function functionsMenu(link) {
-    console.log("\n  Asking the robot what it can run...");
-    const functions = await listFunctions(link);
+/**
+ * One calibration run, launched from the connect menu on the link that is
+ * already open.
+ *
+ * Guarded the same way driving is. `RUN calx` drives the robot the better part
+ * of a metre and `RUN cala` spins it for three minutes -- over a relay both are
+ * BROADCASTS, so every robot on the shared channel would start doing it. The
+ * standalone `leaguebot calibrate` never opens a relay in the first place; this
+ * path can inherit one from `connect`, so it has to check.
+ */
+async function menuCalibration(link, spec, name, options, which) {
+    if (!isPointToPoint(spec)) {
+        console.log(`\n  Refusing to calibrate over ${spec.describe}.`);
+        console.log("  That is a radio relay, and the fleet shares one channel -- EVERY");
+        console.log("  robot in range would start the run, not just " + name + ".");
+        console.log("  Reconnect over WiFi, the farm's TCP link, or a USB cable.");
+        return;
+    }
+    const results = which === "wheel"
+        ? await runWheelCalibration(link)
+        : await runTurnCalibration(link, name, options);
+    if (Object.keys(results).length === 0) return;
+    reportCalibration(name, results, options);
+}
+
+async function functionsMenu(link, known) {
+    const functions = known ?? await listFunctions(link);
     if (functions.length === 0) {
         console.log("  The robot listed no functions.");
         return;
@@ -377,106 +483,89 @@ const TURN_INSTRUCTIONS = `
   give it about three minutes and keep the cross clear.
 `;
 
-export async function calibrateCommand(name, options) {
-    const { link, spec, banner } = await connectTo(name, options);
-    console.log(`\nConnected to ${banner.name} over ${spec.describe}`);
-    if (spec.transport === "serial") {
-        console.log("NOTE: this is the USB cable. Both routines drive the robot several");
-        console.log("metres -- make sure the cable is long enough, or use WiFi/radio.");
-    }
-    if (spec.transport === "radio" || spec.transport === "netradio") {
-        // The report lines are fire-and-forget frames and a measured loss rate
-        // of roughly a third is normal. The parsers have fallbacks, but WiFi
-        // simply does not drop them, and a lost line here costs a whole run.
-        console.log("NOTE: this is the radio, which drops lines. The report can arrive");
-        console.log("incomplete -- prefer WiFi for calibration when the robot has it.");
-    }
-    link.onError((error) => console.error(`  link error: ${error.message}`));
-
+/**
+ * The 90 cm distance run. Returns what it measured, or {} if nothing ran.
+ *
+ * Split out of calibrateCommand so the connect menu can offer the same run on
+ * a link it already has open, without a second connection or a second copy of
+ * the terminal conditions.
+ */
+export async function runWheelCalibration(link) {
     const results = {};
-    try {
-        // ---- wheel -------------------------------------------------------
-        if (await confirm("\nRun the WHEEL calibration (90 cm track)?", true)) {
-            console.log(WHEEL_INSTRUCTIONS);
-            if (await pressSpace()) {
-                const { lines, outcome } = await runCalibration(link, "calx", {
-                    timeoutMs: 180_000,
-                    done: (line) => (/^CALX:apply/.test(line) ? "done"
-                        : /^CALX:fail/.test(line) ? "failed" : undefined),
-                });
-                if (outcome === "done" || outcome === "timeout") {
-                    const diameter = deriveWheelDiameterMm(lines);
-                    if (diameter !== undefined) {
-                        results.wheelDiameterMm = diameter;
-                        console.log(`\n  Wheel diameter: ${diameter} mm`);
-                    } else {
-                        console.log("\n  The run did not report a diameter.");
-                    }
-                } else {
-                    console.log(`\n  Wheel calibration ${outcome}.`);
-                }
-            }
-        }
+    if (!await confirm("\nRun the WHEEL calibration (90 cm track)?", true)) return results;
+    console.log(WHEEL_INSTRUCTIONS);
+    if (!await pressSpace()) return results;
 
-        // A stored diameter is as good as a fresh one for correcting the spin,
-        // and re-running the 90 cm track just to get it back would be silly.
-        if (results.wheelDiameterMm === undefined) {
-            const stored = loadStore(options.dir).robots[name]?.wheelDiameterMm;
-            if (stored !== undefined) {
-                results.wheelDiameterMm = stored;
-                console.log(`\n  Using the stored wheel diameter, ${stored} mm.`);
-            }
+    const { lines, outcome } = await runCalibration(link, "calx", {
+        timeoutMs: 180_000,
+        done: (line) => (/^CALX:apply/.test(line) ? "done"
+            : /^CALX:fail/.test(line) ? "failed" : undefined),
+    });
+    if (outcome === "done" || outcome === "timeout") {
+        const diameter = deriveWheelDiameterMm(lines);
+        if (diameter !== undefined) {
+            results.wheelDiameterMm = diameter;
+            console.log(`\n  Wheel diameter: ${diameter} mm`);
+        } else {
+            console.log("\n  The run did not report a diameter.");
         }
+    } else {
+        console.log(`\n  Wheel calibration ${outcome}.`);
+    }
+    return results;
+}
 
-        // ---- turn --------------------------------------------------------
-        if (await confirm("\nRun the TURN calibration (spin on a cross)?", true)) {
-            console.log("\n  Measure the track width with a caliper -- the distance between the");
-            console.log("  two wheel contact patches, in cm -- and type it below.");
-            console.log("  Leave it BLANK and the spin's own effective width is used instead,");
-            console.log("  which drives correctly but cannot tell you how much is scrub.");
-            const typed = (await ask("\n  Track width in cm (blank to skip): ")) ?? "";
-            const measuredTrackWidthCm = typed === "" ? undefined : Number(typed);
-            if (typed !== "" && !Number.isFinite(measuredTrackWidthCm)) {
-                console.log(`  '${typed}' is not a number -- carrying on without a caliper figure.`);
-            }
+/** The spin on the cross. Returns what it measured, or {} if nothing ran. */
+export async function runTurnCalibration(link, name, options) {
+    const results = {};
 
-            console.log(TURN_INSTRUCTIONS);
-            if (await pressSpace()) {
-                const { lines, outcome } = await runCalibration(link, "cala", {
-                    timeoutMs: 420_000,
-                    // CALA:error is the LAST line, after the two check spins.
-                    // A CALA:fail only ends the run if it lands before the
-                    // measurement -- one during the checks is a bad check, not
-                    // a bad measurement.
-                    done: (line, lines) => {
-                        if (/^CALA:error/.test(line)) return "done";
-                        if (/^CALA:fail/.test(line)
-                            && !lines.some((l) => /^CALA:measured b=/.test(l))) return "failed";
-                        return undefined;
-                    },
-                });
-                const reported = deriveReportedTrackWidthCm(lines);
-                if (reported !== undefined) {
-                    results.reportedTrackWidthCm = reported;
-                    if (Number.isFinite(measuredTrackWidthCm)) {
-                        results.measuredTrackWidthCm = measuredTrackWidthCm;
-                    }
-                } else {
-                    console.log(`\n  Turn calibration ${outcome} without a measurement.`);
-                }
-            }
-        }
-    } finally {
-        await link.close().catch(() => {});
+    // A stored diameter is as good as a fresh one for correcting the spin, and
+    // re-driving the 90 cm track just to recover it would be silly.
+    const stored = loadStore(options.dir).robots[name]?.wheelDiameterMm;
+    if (stored !== undefined) {
+        results.wheelDiameterMm = stored;
+        console.log(`\n  Using the stored wheel diameter, ${stored} mm.`);
     }
 
-    // ---- the answer ------------------------------------------------------
-    if (results.wheelDiameterMm === undefined && results.reportedTrackWidthCm === undefined) {
-        closeTerm();
-        console.log("\nNothing measured, nothing saved.");
-        return;
+    if (!await confirm("\nRun the TURN calibration (spin on a cross)?", true)) return {};
+
+    console.log("\n  Measure the track width with a caliper -- the distance between the");
+    console.log("  two wheel contact patches, in cm -- and type it below.");
+    console.log("  Leave it BLANK and the spin's own effective width is used instead,");
+    console.log("  which drives correctly but cannot tell you how much is scrub.");
+    const typed = (await ask("\n  Track width in cm (blank to skip): ")) ?? "";
+    const measuredTrackWidthCm = typed === "" ? undefined : Number(typed);
+    if (typed !== "" && !Number.isFinite(measuredTrackWidthCm)) {
+        console.log(`  '${typed}' is not a number -- carrying on without a caliper figure.`);
     }
 
+    console.log(TURN_INSTRUCTIONS);
+    if (!await pressSpace()) return {};
+
+    const { lines, outcome } = await runCalibration(link, "cala", {
+        timeoutMs: 420_000,
+        // CALA:error is the LAST line, after the two check spins. A CALA:fail
+        // only ends the run if it lands BEFORE the measurement -- one during
+        // the checks is a bad check, not a bad measurement.
+        done: (line, seen) => {
+            if (/^CALA:error/.test(line)) return "done";
+            if (/^CALA:fail/.test(line)
+                && !seen.some((l) => /^CALA:measured b=/.test(l))) return "failed";
+            return undefined;
+        },
+    });
+    const reported = deriveReportedTrackWidthCm(lines);
+    if (reported === undefined) {
+        console.log(`\n  Turn calibration ${outcome} without a measurement.`);
+        return {};
+    }
+    results.reportedTrackWidthCm = reported;
+    if (Number.isFinite(measuredTrackWidthCm)) results.measuredTrackWidthCm = measuredTrackWidthCm;
+    return results;
+}
+
+/** Derive, print and save. Shared by the command and the connect menu. */
+export function reportCalibration(name, results, options) {
     const cal = deriveCalibration(results);
     console.log(`\n--- ${name} ---`);
     if (cal.wheelDiameterMm !== undefined) {
@@ -494,7 +583,6 @@ export async function calibrateCommand(name, options) {
             + "  (it turns as though its wheels were this much further apart)");
     }
 
-    closeTerm();
     const file = saveCalibration(name, cal, options.dir);
     console.log(`\nSaved to ${file}`);
 
@@ -503,6 +591,34 @@ export async function calibrateCommand(name, options) {
         console.log("\nPaste this into the robot's program:\n");
         for (const line of snippet) console.log(`    ${line}`);
     }
+}
+
+export async function calibrateCommand(name, options) {
+    // pointToPoint: `RUN calx` and `RUN cala` are motion. Over a relay they are
+    // BROADCASTS -- every robot on the shared channel would start driving or
+    // spinning -- so a relay is not a candidate for this command at all.
+    const { link, spec, banner } = await connectTo(name, { ...options, pointToPoint: true });
+    console.log(`\nConnected to ${banner.name} over ${spec.describe}`);
+    if (spec.transport === "serial") {
+        console.log("NOTE: this is the USB cable. Both routines drive the robot several");
+        console.log("metres -- make sure the cable is long enough, or use WiFi.");
+    }
+    link.onError((error) => console.error(`  link error: ${error.message}`));
+
+    let results = {};
+    try {
+        results = { ...results, ...await runWheelCalibration(link) };
+        results = { ...results, ...await runTurnCalibration(link, name, options) };
+    } finally {
+        await link.close().catch(() => {});
+    }
+
+    closeTerm();
+    if (results.wheelDiameterMm === undefined && results.reportedTrackWidthCm === undefined) {
+        console.log("\nNothing measured, nothing saved.");
+        return;
+    }
+    reportCalibration(name, results, options);
 }
 
 /** `leaguebot show [name]` -- what is already in calibration.json. */
@@ -515,5 +631,20 @@ export function showCommand(name, options) {
         if (!cal) { console.log(`${key}: nothing recorded`); continue; }
         console.log(`\n--- ${key} ---  (measured ${cal.measuredAt ?? "?"})`);
         for (const line of calibrationSnippet(cal)) console.log(`    ${line}`);
+    }
+}
+
+/** `leaguebot drive <name>` -- straight into the cursor-key driver. */
+export async function driveCommand(name, options) {
+    // pointToPoint: a relay would broadcast the motion to every robot in
+    // range, so it is not a candidate for this command at all.
+    const { link, spec, banner } = await connectTo(name, { ...options, pointToPoint: true });
+    console.log(`\nConnected to ${banner.name} over ${spec.describe}`);
+    link.onError((error) => console.error(`  link error: ${error.message}`));
+    try {
+        await driveWithKeys(link, name, spec);
+    } finally {
+        await link.close().catch(() => {});
+        closeTerm();
     }
 }

@@ -87,6 +87,31 @@ function waitForLine(link, match, timeoutMs) {
     });
 }
 
+/** How long to wait for `ID`'s reply. The line is a session constant the
+ *  robot writes straight away, so this only has to cover the radio hop. */
+const ID_TIMEOUT_MS = 1500;
+
+/** Wait for an `id` line that belongs to `expect` (or any, when unset). */
+function waitForIdentity(link, expect, overRelay, timeoutMs) {
+    return new Promise((resolve) => {
+        const timer = setTimeout(() => { off(); resolve(null); }, timeoutMs);
+        const off = link.onLine((decoded) => {
+            if (decoded.verb !== "id") return;
+            const [drivetrain, profile, version, name] = decoded.fields;
+            // A pre-name firmware answers with three fields. On a cable or
+            // WiFi there is only one robot on the line, so that still counts;
+            // over a relay an anonymous line could be anyone's, so it does not.
+            const mine = expect === undefined
+                || name === expect
+                || (name === undefined && !overRelay);
+            if (!mine) return;
+            clearTimeout(timer);
+            off();
+            resolve({ drivetrain, profile, version, name, raw: decoded.raw });
+        });
+    });
+}
+
 /** Once one robot has answered, how much longer its neighbours get to. */
 const BANNER_BURST_MS = 400;
 
@@ -112,7 +137,9 @@ function collectBanners(link, expect, timeoutMs, burstMs = BANNER_BURST_MS) {
         const off = link.onRawLine((line) => {
             const banner = parseBanner(line);
             if (banner === null) return;
-            heard.push(banner);
+            // The raw line rides along: `probe <name>` shows it verbatim, so
+            // the operator sees exactly what the board said, not a rendering.
+            heard.push({ ...banner, raw: line });
             if (expect === undefined || banner.name === expect) { finish(); return; }
             clearTimeout(timer);
             timer = setTimeout(finish, burstMs);
@@ -216,6 +243,32 @@ export class BaseLink {
             if (heard.length > 0) last = heard[heard.length - 1];
         }
         return last;
+    }
+
+    /**
+     * Ask `ID` and return the reply as { drivetrain, profile, version, name,
+     * raw }, or null if nothing answered. Never throws.
+     *
+     * The reply is `id <drivetrain> <profile> <version> <name>` -- `version`
+     * is the deploy-baked firmware version (VER repeats only that field, so
+     * ID is the one to ask). Like HELLO, ID over a relay is a BROADCAST and
+     * every robot in range answers it, so `expect` picks this robot's line
+     * out of the burst by its fourth field; and like HELLO the frame can be
+     * dropped, so it is asked more than once over the air.
+     *
+     * ID is unsequenced -- it answers a session constant and does not touch
+     * the robot's expected id -- so asking is free of side effects.
+     */
+    async identityOf({ expect, attempts, waitMs = ID_TIMEOUT_MS } = {}) {
+        const overRelay = this.spec.channel !== undefined;
+        const tries = attempts ?? (overRelay ? 4 : 1);
+        for (let attempt = 0; attempt < tries; attempt += 1) {
+            const wait = waitForIdentity(this, expect, overRelay, waitMs);
+            this.sendUnsequenced("ID");
+            const identity = await wait;
+            if (identity) return identity;
+        }
+        return null;
     }
 
     sendCommand(verb, fields = []) {
@@ -335,6 +388,33 @@ export class SerialLink extends BaseLink {
         this.closed = true;
         await new Promise((resolve) => this.port.close(() => resolve()));
     }
+}
+
+/**
+ * Enumerate the robots a relay can hear.
+ *
+ * The radio has no "who is there" query, which is why a relay can reach a
+ * robot it cannot list. But HELLO over the air is a BROADCAST and whichever
+ * robot answers first wins, so asking repeatedly surfaces different ones --
+ * the same contention that makes a single relay probe unreliable, used the
+ * right way round. Measured on this fleet: three robots on one channel, and
+ * consecutive HELLOs answered by vevov, gopiv and tigez in turn.
+ *
+ * Never complete: a robot that loses every race stays invisible, and one round
+ * of silence means nothing. So this reports what it HEARD, never "these are
+ * all of them".
+ */
+export async function sweepBanners(link, { rounds = 14, waitMs = 1200 } = {}) {
+    const names = new Map();
+    for (let round = 0; round < rounds; round += 1) {
+        const wait = waitForLine(link, (line) => parseBanner(line) !== null, waitMs);
+        link._send(link.session.connect());
+        const line = await wait;
+        if (line === undefined) continue;
+        const banner = parseBanner(line);
+        if (banner?.name) names.set(banner.name, banner);
+    }
+    return [...names.values()];
 }
 
 /** Print both directions of a link's traffic. The single most useful thing to

@@ -1,6 +1,6 @@
 // cli.js -- argument parsing and dispatch.
 
-import { calibrateCommand, connectCommand, probeAll, probeOne, showCommand } from "./commands.js";
+import { calibrateCommand, connectCommand, driveCommand, probeAll, probeOne, showCommand } from "./commands.js";
 import { FLEET_CHANNEL, FLEET_GROUP } from "./resolve.js";
 
 // However the operator invoked us. The `lb` wrapper sets this so its own help
@@ -11,8 +11,9 @@ const USAGE = `
 ${NAME} -- find, drive and calibrate League robots.
 
   ${NAME} probe                 list every robot on USB and on the network
-  ${NAME} probe <name>          say which paths reach one robot
-  ${NAME} connect <name>        open a menu: run the robot's functions
+  ${NAME} probe <name>          say which paths reach one robot, and what it runs
+  ${NAME} connect <name>        open a menu: drive it, run its functions
+  ${NAME} drive <name>          steer it with the cursor keys
   ${NAME} calibrate <name>      run the wheel and turn calibrations
   ${NAME} show [name]           print what is in calibration.json
 
@@ -63,7 +64,10 @@ export async function main(argv) {
         return 2;
     }
     const { options, positional } = parsed;
-    const [command, name] = positional;
+    const [command, rawName] = positional;
+    // micro:bit friendly names are five lowercase letters; typing GoPiv is
+    // a way of saying gopiv, not a request for a different robot.
+    const name = rawName?.toLowerCase();
 
     if (options.help || command === undefined) {
         console.log(USAGE);
@@ -75,6 +79,10 @@ export async function main(argv) {
             case "probe":
                 if (name) await probeOne(name, options);
                 else await probeAll(options);
+                return 0;
+            case "drive":
+                if (!name) { console.error("drive needs a robot name"); return 2; }
+                await driveCommand(name, options);
                 return 0;
             case "connect":
                 if (!name) { console.error("connect needs a robot name"); return 2; }

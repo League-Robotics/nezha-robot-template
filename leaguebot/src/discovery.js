@@ -1,9 +1,9 @@
 // discovery.js -- what is out there: micro:bits on USB, and robots on the LAN.
 //
 // Ported from robot-console's packages/host/src/devices.ts and
-// discovery/mdnsDiscovery.ts, trimmed to enumeration only -- no SWD, no HID,
-// no flashing. It does read mbdeploy's device registry, but only as a fallback
-// for naming a port it could not open.
+// discovery/mdnsDiscovery.ts, trimmed to enumeration only -- no flashing. A
+// board's NAME comes from its chip id, the same way mbdeploy gets it; see
+// friendlyName() below.
 
 import dnsPromises from "node:dns/promises";
 import net from "node:net";
@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { Bonjour } from "bonjour-service";
 import { SerialPort } from "serialport";
 import { SerialLink, toCalloutPath } from "./links.js";
+import { readChipIds } from "./swd.js";
 import { bannerDeviceType } from "./wire.js";
 
 /** DAPLink's USB ids -- the mbed interface chip every micro:bit presents. */
@@ -62,7 +63,9 @@ export async function listMicrobitPorts() {
  */
 export function explainPortError(error) {
     const text = error?.message ?? String(error);
-    if (/cannot lock port|resource temporarily unavailable|EBUSY|EACCES/i.test(text)) {
+    // Seen both ways on macOS: "Resource temporarily unavailable Cannot lock
+    // port" and "Resource busy, cannot open".
+    if (/cannot lock port|resource temporarily unavailable|resource busy|EBUSY|EACCES/i.test(text)) {
         return "in use by another program (robot-console, mbdeploy serve, or a serial monitor)";
     }
     return text;
@@ -71,14 +74,9 @@ export function explainPortError(error) {
 /**
  * mbdeploy's device registry, keyed by the full USB serial.
  *
- * A serial port is exclusive, so while robot-console's dev server or
- * `mbdeploy serve` is running there is NO way to ask a board its name -- and a
- * listing of three anonymous ports is close to useless. This file is the one
- * source that answers "which board is on this port" without opening it.
- *
- * What it gives is a CACHED name, not a verified one: the board on a port can
- * be swapped without the file knowing. So callers mark these as remembered
- * rather than presenting them as identified.
+ * Always look entries up by the serial of the board plugged in NOW, never by
+ * port: the `port` field is only as fresh as the last `mbdeploy probe`, while
+ * a UID's `device_id` is burned into that board's chip and cannot go stale.
  */
 export function loadDeviceRegistry(dirs = []) {
     const here = path.dirname(fileURLToPath(import.meta.url));
@@ -98,6 +96,7 @@ export function loadDeviceRegistry(dirs = []) {
                     name: entry.device_name ?? entry.board_name,
                     role: entry.role,
                     commonName: entry.common_name,
+                    deviceId: entry.device_id,
                 });
             }
             return { file, byUid };
@@ -114,15 +113,64 @@ function typeFromRegistry(entry) {
     return "unknown";
 }
 
+// ---- names from the chip --------------------------------------------------
+
+/** CODAL's friendly-name codebook -- the same table as mbdeploy's devices.py. */
+const NAME_CODEBOOK = [
+    ["z", "v", "g", "p", "t"],
+    ["u", "o", "i", "e", "a"],
+    ["z", "v", "g", "p", "t"],
+    ["u", "o", "i", "e", "a"],
+    ["z", "v", "g", "p", "t"],
+];
+
+/**
+ * The five-letter name the micro:bit runtime derives from FICR.DEVICEID[1]:
+ * the 32-bit id as five base-5 digits, least significant digit last.
+ *
+ * NOT from the USB serial. That belongs to the separate DAPLink interface chip
+ * and has no relation to the nRF's DEVICEID, so no slice of it is the name.
+ * The id has to be read off the target once; after that it never changes.
+ */
+export function friendlyName(deviceId) {
+    let n = deviceId >>> 0;
+    const letters = new Array(5);
+    for (let i = 0; i < 5; i += 1) {
+        letters[4 - i] = NAME_CODEBOOK[i][n % 5];
+        n = Math.floor(n / 5);
+    }
+    return letters.join("");
+}
+
+/**
+ * Name every attached board from its chip id, read live through the board's
+ * own debug probe (swd.js). Returns Map<serialNumber, {name} | {error}>.
+ *
+ * mbdeploy's registry is the fallback when the read fails: it records the same
+ * DEVICEID for a UID, and an id in silicon cannot have changed since.
+ */
+export async function nameBoards(ports, registry) {
+    const serials = ports.map((p) => p.serialNumber).filter(Boolean);
+    const read = await readChipIds(serials);
+    const names = new Map();
+    for (const serial of serials) {
+        const result = read.get(serial);
+        const id = result?.deviceId ?? registry?.byUid.get(serial)?.deviceId;
+        names.set(serial, Number.isInteger(id) ? { name: friendlyName(id) } : { error: result?.error });
+    }
+    return names;
+}
+
 /**
  * Open one port, say HELLO, and report what answered.
  *
- * The USB ids say "this is a micro:bit"; they cannot say whether it is a robot,
- * a radio relay or a board running someone's homework. Only the banner knows,
- * so identification means actually talking to it -- and when that is not
- * possible, `registry` supplies a remembered name instead of nothing.
+ * The name does not need this -- `chip` already has it, even for a busy port.
+ * What only the firmware can say is whether the board is a robot, a radio
+ * relay or someone's homework; on a busy port that falls back to the role the
+ * registry last recorded for this UID.
  */
-export async function identifyPort(port, registry) {
+export async function identifyPort(port, registry, chip) {
+    const remembered = registry?.byUid.get(port.serialNumber ?? "");
     const link = new SerialLink({ transport: "serial", portPath: port.portPath });
     try {
         await link.connect();
@@ -130,22 +178,19 @@ export async function identifyPort(port, registry) {
         return {
             ...port,
             banner,
-            name: banner?.name,
+            name: chip?.name ?? banner?.name,
+            nameError: chip?.name === undefined && banner?.name === undefined ? chip?.error : undefined,
             role: banner?.role,
             type: bannerDeviceType(banner),
-            source: "banner",
         };
     } catch (error) {
-        const remembered = registry?.byUid.get(port.serialNumber ?? "");
         return {
             ...port,
             error: explainPortError(error),
-            name: remembered?.name,
+            name: chip?.name ?? remembered?.name,
+            nameError: chip?.name === undefined && remembered?.name === undefined ? chip?.error : undefined,
             role: remembered?.role,
             type: typeFromRegistry(remembered),
-            // Never "banner": this board was not spoken to, and the name could
-            // belong to whatever was last plugged into that USB slot.
-            source: remembered ? "registry" : "none",
         };
     } finally {
         await link.close().catch(() => {});
@@ -157,9 +202,9 @@ export async function identifyPort(port, registry) {
 export async function probeUsb(options = {}) {
     const registry = options.registry ?? loadDeviceRegistry(options.dir ? [options.dir] : []);
     const ports = await listMicrobitPorts();
+    const names = await nameBoards(ports, registry);
     const found = [];
-    for (const port of ports) found.push(await identifyPort(port, registry));
-    found.registryFile = registry.file;
+    for (const port of ports) found.push(await identifyPort(port, registry, names.get(port.serialNumber)));
     return found;
 }
 
@@ -229,7 +274,13 @@ const MBSERIAL = "mbserial";
 /** A radio relay reachable over the network. */
 const MBRELAY = "mbrelay";
 
-const DEFAULT_SCAN_MS = 2500;
+// mDNS has no "that is all of them", only a quiet period, so a scan is always
+// a time budget -- and 2500 ms was too tight. The farm daemons answer in about
+// 100 ms, but not every announcement lands in the first second: at 2500 ms a
+// robot that was plainly there (gopiv on loki) was missed on run after run and
+// appeared immediately at 4000 ms. A probe that silently omits a live robot is
+// worse than a slower one.
+const DEFAULT_SCAN_MS = 4000;
 
 // For _robotlink the robot's 5-letter name is in the TXT record, NOT in the
 // instance name (which is a human label like "gopiv robot link"). The tcp and
