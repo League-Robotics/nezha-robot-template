@@ -77,8 +77,14 @@ diffDrive.emitLine("boot tests ready")
 diffDrive.emitLine(RADIO_ADDRESS.length == 2
     ? "boot radio " + control.deviceName() + " ch " + RADIO_ADDRESS[0] + " grp " + RADIO_ADDRESS[1]
     : "boot radio off: " + control.deviceName() + " has no derived address")
-diffDrive.emitLine("boot verbs: square circle spin[:secs] line sense"
-    + " calx cala push:<cm> turn:<deg> speed:<cm/s> trace:0|1 counters clear diag")
+// The calibration image carries only what calibration needs. On 2026-09-13
+// cala was missing from every robot's function list over WiFi: FUNCS writes
+// one line per verb, and pxt-nezha-diffdrive before v1.20260913.1 dropped any
+// reply line that did not fit its 8-line WiFi transmit ring, so only the first
+// seven registered names ever arrived. v1.20260913.1 makes a reply line wait
+// for room, so the list is complete again. If you ever pin an OLDER extension,
+// keep this image to seven RUN verbs or the later ones vanish from the list.
+diffDrive.emitLine("boot verbs: square circle calx cala")
 diffDrive.emitLine("boot buttons: A=pick program  B=run it")
 
 
