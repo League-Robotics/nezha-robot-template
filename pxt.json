@@ -16,6 +16,9 @@
         "test/circle.ts",
         "test/calibratex.ts",
         "test/calibratea.ts",
+        "test/calibratel.ts",
+        "test/calibratej.ts",
+        "test/calibratet.ts",
         "test/linetrack.ts",
         "test/boot.ts"
     ],
