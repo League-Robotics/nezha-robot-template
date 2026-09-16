@@ -84,10 +84,29 @@ const CALJ_TRUE_CM = 90.2     // start-to-finish, TAPE-MEASURED by Eric
                               // field with a tape; do not trust a stale camera
                               // for the one length the whole calibration scales by.
 const CALJ_STRIPE_W = 1.68    // cm, the centre stripe's width, camera-measured
-const CALJ_SPEED = 8          // cm/s. One ~24 ms tick is ~1.9 mm.
-const CALJ_KP = 1.1           // (cm/s of wheel differential) per cm of error
-const CALJ_MAX_STEER = 2.5    // cm/s cap on the correction
-const CALJ_DEADBAND = 0.3     // cm of error inside which it drives straight
+// ---- THE STRADDLE GAINS ARE TUNABLE AT RUNTIME ---------------------------
+// `let`, not `const`, so `RUN caltune` can set them over the wire. See the
+// tuning verbs at the foot of this file for why that is a requirement and not
+// a convenience: robots hosted on a Raspberry Pi cannot be reflashed from the
+// bench, so a gain that exists only as a compiled constant cannot be tuned on
+// those robots at all.
+let CALJ_SPEED = 8            // cm/s. One ~24 ms tick is ~1.9 mm.
+let CALJ_KP = 1.1             // (cm/s of wheel differential) per cm of error
+let CALJ_MAX_STEER = 2.5      // cm/s cap on the correction
+let CALJ_DEADBAND = 0.3       // cm of error inside which it drives straight
+// ---- THE LEVER ARM IS PART OF THE CONTROLLER, NOT THE CHASSIS ------------
+// Distance from the axle to the sensor bar. It is NOT decoration: with the
+// sensor L ahead of the axle the straddle loop is
+//     e'' + L*Kp*e' + v*Kp*e = 0        ->   zeta = (L/2) * sqrt(Kp/v)
+// so L multiplies the damping term DIRECTLY. Shorten the arm and damping falls
+// in proportion, on gains that were perfectly stable before. To hold zeta when
+// the arm shrinks by a factor k, Kp must rise by k^2 -- or the speed must come
+// down, which is cheaper and does not also raise the loop bandwidth.
+//
+// gopiv carries a long arm at ~17 cm. vevov's is much shorter (stakeholder,
+// 2026-09-16), which is why gopiv's Kp=1.1 is expected to ring on it. Measure
+// the arm, set it here or with `RUN caltune`, then let `RUN calzeta` pick Kp.
+let CALJ_LEVER = 17
 const CALJ_BLIND_ERR = 1.2    // cm of assumed error while no channel sees tape,
                               // signed by the last known side
 // ACQUISITION. Phase 3 can legitimately BEGIN blind: the stripe is narrow
@@ -132,7 +151,7 @@ const CALJ_MAX_SECS = 60      // s for the whole run; a stalled robot stops its
 const CALJ_TRK_EVERY = 25     // ticks between tracking diagnostics
 const CALJ_ALL = 15           // all four channel bits
 const CALJ_OUTER = 9          // channels 0 and 3
-const CALJ_BACK_SPEED = 11    // cm/s driving home in reverse. Reverse below
+let CALJ_BACK_SPEED = 11      // cm/s driving home in reverse. Reverse below
                               // about 10 cm/s does not break away at all on this
                               // fleet (calibratel.ts CALL_CREEP_REV), so this is
                               // as slow as reverse can usefully go.
@@ -156,8 +175,8 @@ const CALJ_BACK_MAX = 110     // cm of reverse travel before giving up. The
 // reversing a car: to move the trailing end left you steer right. The trace
 // condition then wants Kh < L*Kp, i.e. heading damping of the same sign and
 // enough of it. Both gains below are negative for that reason.
-const CALJ_BACK_KP = -0.7     // cm/s of differential per cm of error. NEGATIVE.
-const CALJ_BACK_KH = -0.22    // cm/s per degree of heading error. NEGATIVE.
+let CALJ_BACK_KP = -0.7       // cm/s of differential per cm of error. NEGATIVE.
+let CALJ_BACK_KH = -0.22      // cm/s per degree of heading error. NEGATIVE.
 // INTEGRAL DISABLED, and it must stay that way unless the error is recentred.
 // The aim point is the EDGE of the `..#.` band, so err reads 0 or +0.6 almost
 // always and can only go negative once the stripe reaches channel 3. The error
@@ -168,9 +187,9 @@ const CALJ_BACK_KH = -0.22    // cm/s per degree of heading error. NEGATIVE.
 // hometrk log. It cancelled the heading correction, walked the heading to
 // -6.6 deg and lost the stripe at 68.9cm. Heading damping (Kh) already supplies
 // the steady-state rejection the integral was meant to provide.
-const CALJ_BACK_KI = 0
+let CALJ_BACK_KI = 0
 const CALJ_BACK_IMAX = 60     // clamp on the accumulated error (tick-units)
-const CALJ_BACK_MAX_STEER = 2.5
+let CALJ_BACK_MAX_STEER = 2.5
 const CALJ_BACK_BLIND_MAX = 25  // ticks (~5cm) blind before abandoning the return
 
 // The bar as text, channel 0 (left) first. calibratel.ts has its own barText();
@@ -522,6 +541,77 @@ function caljHome() {
 function calibrateJ() {
     runCalibrateJ(CALJ_TRUE_CM)
 }
+
+// ---- RUNTIME TUNING ------------------------------------------------------
+// Every straddle gain above is `let`, and these verbs set them over the wire.
+//
+// This is a REQUIREMENT, not a convenience. vevov (2026-09-16) reaches this
+// bench only as a TCP serial export served by a Raspberry Pi at 192.168.4.50:
+// no USB path, and SSH on that Pi refuses every account tried. It cannot be
+// reflashed from here AT ALL. A gain that exists only as a compiled constant is
+// therefore untunable on that robot -- not merely inconvenient. One flash plus
+// wire tuning replaces one flash per trial, and on a robot nobody can flash it
+// is the difference between tuning and not tuning.
+//
+// Omitted arguments keep their current value, so `RUN caltune 6` sets only the
+// speed. With no arguments these just report, which is also how the gains are
+// read back off a robot somebody else flashed.
+
+// Damping ratio of the straddle loop, zeta = (L/2)*sqrt(Kp/v). Aim near 1:
+// below ~0.5 it rings, above ~2 it corners wide and rides MAX_STEER.
+function caljZeta(): number {
+    if (CALJ_SPEED <= 0 || CALJ_KP <= 0 || CALJ_LEVER <= 0) return 0
+    return (CALJ_LEVER / 2) * Math.sqrt(CALJ_KP / CALJ_SPEED)
+}
+
+function caljTuneReport() {
+    diffDrive.emitLine("CALJ:tune speed=" + CALJ_SPEED + " kp=" + lineRound(CALJ_KP, 3)
+        + " maxsteer=" + CALJ_MAX_STEER + " dead=" + CALJ_DEADBAND
+        + " lever=" + CALJ_LEVER + "cm zeta=" + lineRound(caljZeta(), 2))
+    diffDrive.emitLine("CALJ:btune kp=" + CALJ_BACK_KP + " kh=" + CALJ_BACK_KH
+        + " ki=" + CALJ_BACK_KI + " speed=" + CALJ_BACK_SPEED
+        + " maxsteer=" + CALJ_BACK_MAX_STEER)
+}
+
+diffDrive.onRun("caltune", function (arg) {
+    CALJ_SPEED = runNumber(0, CALJ_SPEED)
+    CALJ_KP = runNumber(1, CALJ_KP)
+    CALJ_MAX_STEER = runNumber(2, CALJ_MAX_STEER)
+    CALJ_DEADBAND = runNumber(3, CALJ_DEADBAND)
+    CALJ_LEVER = runNumber(4, CALJ_LEVER)
+    caljTuneReport()
+})
+diffDrive.runSignature("caltune",
+    "(speed:number,kp:number,maxsteer:number,dead:number,lever:number)")
+
+diffDrive.onRun("calbtune", function (arg) {
+    CALJ_BACK_KP = runNumber(0, CALJ_BACK_KP)
+    CALJ_BACK_KH = runNumber(1, CALJ_BACK_KH)
+    CALJ_BACK_KI = runNumber(2, CALJ_BACK_KI)
+    CALJ_BACK_SPEED = runNumber(3, CALJ_BACK_SPEED)
+    CALJ_BACK_MAX_STEER = runNumber(4, CALJ_BACK_MAX_STEER)
+    caljTuneReport()
+})
+diffDrive.runSignature("calbtune",
+    "(kp:number,kh:number,ki:number,speed:number,maxsteer:number)")
+
+// Set Kp from a TARGET DAMPING at the current arm and speed: Kp = v*(2*zeta/L)^2.
+// This is the verb for a robot whose arm differs from gopiv's. It carries the
+// geometry across so a short arm behaves like a long one, instead of
+// rediscovering a gain by trial and error on every new chassis.
+diffDrive.onRun("calzeta", function (arg) {
+    const want = runNumber(0, 1)
+    if (CALJ_LEVER <= 0 || want <= 0) {
+        diffDrive.emitLine("CALJ:tune refused zeta=" + want + " lever=" + CALJ_LEVER)
+        return
+    }
+    const t = 2 * want / CALJ_LEVER
+    CALJ_KP = CALJ_SPEED * t * t
+    diffDrive.emitLine("CALJ:tune kp=" + lineRound(CALJ_KP, 3) + " chosen for zeta="
+        + want + " at lever=" + CALJ_LEVER + "cm speed=" + CALJ_SPEED)
+    caljTuneReport()
+})
+diffDrive.runSignature("calzeta", "(zeta:number=1)")
 
 diffDrive.onRun("calj", function (arg) { runCalibrateJ(runNumber(0, CALJ_TRUE_CM)) })
 diffDrive.runSignature("calj", "(cm:number=90.5)")

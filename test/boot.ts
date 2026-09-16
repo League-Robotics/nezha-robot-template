@@ -165,6 +165,40 @@ if (control.deviceName() == "gopiv") {
     diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.957)
 }
 
+if (control.deviceName() == "vevov") {
+    // WIRING. vevov is NOT wired like the rest of the fleet, and the
+    // calibration image's default (left M1, right M2, both forward) drives it
+    // MIRRORED -- every steering correction lands on the wrong wheel, in the
+    // wrong direction. radio-robot-lib's config/robots/vevov.json is explicit:
+    //     left_port = 2   right_port = 1
+    //     fwd_sign_left = 1   fwd_sign_right = -1
+    // so left is on M2, right is on M1, and the RIGHT motor runs reversed.
+    //
+    // Naming the port the other wheel is on swaps the pair (configureMotor's
+    // own doc), so the first line alone moves left to M2 and right to M1. The
+    // second line then only sets the right-hand direction, because right is
+    // already on M1 by then.
+    diffDrive.configureMotor(MotorSide.Left, MotorPort.M2, MotorDirection.Forward)
+    diffDrive.configureMotor(MotorSide.Right, MotorPort.M1, MotorDirection.Reversed)
+    // Wheel travel per shaft degree, MEASURED on vevov 2026-09-15 by calibratel
+    // (captures/calibratel-vevov-20260915/). calj sets its own baseline at the
+    // start of every run, so this only affects ordinary driving, not the
+    // calibration's answer.
+    diffDrive.setWheelCalibration(0.79324)
+    // Track width CALIPER-MEASURED by Eric 2026-09-16: 111.6 mm. The config had
+    // carried 128.0, which is about one tyre width larger and reads as an
+    // outside-to-outside span. With the true width the slip falls to
+    // 111.6/116.2 = 0.96 -- back inside config.proto's legal {0} u [0.5, 1.0],
+    // which the old baked 1.1013 violated outright.
+    diffDrive.setTrackWidth(11.16)
+    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.96)
+    // NOTE: the straddle lever arm (CALJ_LEVER, calibratej.ts) is deliberately
+    // NOT set here. vevov's sensor bar is much shorter than gopiv's ~17cm but
+    // has not been measured, and guessing it would put a wrong number into the
+    // damping. Set it over the wire with `RUN caltune`, then let `RUN calzeta`
+    // pick Kp for it -- that is what those verbs exist for.
+}
+
 //radio.setGroup(11)
 //let channel = "J"
 //radio.setFrequencyBand(parseInt(channel, 36) + 10)

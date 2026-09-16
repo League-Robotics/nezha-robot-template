@@ -48,7 +48,7 @@
 // set.
 const CT_TRACK = 11.42      // cm, the anchor track width (the compiled default)
 const CT_SLIP = 0.952       // the compiled default; b_anchor = 11.42/0.952 = 12.0 cm
-const CT_SPEED = 5          // cm/s per wheel in the pivot, opposite signs. At
+let CT_SPEED = 5            // cm/s per wheel in the pivot, opposite signs. At
                               // b = 12 cm this is about 52 deg/s, so one ~24 ms
                               // tick is ~1.2 deg -- and the midpoint of two
                               // entries halves that. Slower would resolve better
@@ -287,3 +287,14 @@ function calibrateT() {
 
 diffDrive.onRun("calt", function (arg) { runCalibrateT(runNumber(0, 2)) })
 diffDrive.runSignature("calt", "(pairs:number=2)")
+
+// The pivot speed, tunable over the wire for the same reason the straddle gains
+// are (see calibratej.ts): a Pi-hosted robot cannot be reflashed to try a
+// different one. Slower resolves the entry angles better -- one tick is
+// CT_SPEED-dependent -- but a pivot runs one wheel backwards and this fleet does
+// not break away in reverse much below 10 cm/s, so there is a floor.
+diffDrive.onRun("cttune", function (arg) {
+    CT_SPEED = runNumber(0, CT_SPEED)
+    diffDrive.emitLine("CALT:tune speed=" + CT_SPEED + "cm/s")
+})
+diffDrive.runSignature("cttune", "(speed:number)")
