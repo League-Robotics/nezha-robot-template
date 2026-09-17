@@ -655,3 +655,34 @@ diffDrive.runSignature("calj", "(cm:number=90.5)")
 
 diffDrive.onRun("caljhome", function (arg) { caljHome() })
 diffDrive.runSignature("caljhome", "()")
+
+// Report the thresholded bits AND the four raw reflectance values side by side,
+// without moving. The bits alone are ambiguous: a set bit means "dark", which is
+// either tape under the channel or a threshold set wrong, and those need
+// completely different fixes. The gray values separate them -- on uniform white
+// paper all four should read close together, whatever the bits say.
+diffDrive.onRun("bargray", function (arg) {
+    diffDrive.emitLine("CALJ:bar=" + caljBar(linetrack.lineBits())
+        + " gray=" + linetrack.grayOf(0) + "," + linetrack.grayOf(1)
+        + "," + linetrack.grayOf(2) + "," + linetrack.grayOf(3))
+})
+diffDrive.runSignature("bargray", "()")
+
+// The learned per-channel references beside a live reading, so a gray value can
+// be judged rather than guessed at. Each channel is compared against its OWN
+// learned line/background pair, so a single global threshold does not describe
+// the sensor and two channels reading the same gray can disagree on the bit.
+// If a channel's line and background references sit close together, that
+// channel has nothing to discriminate with and will flicker.
+diffDrive.onRun("barref", function (arg) {
+    diffDrive.emitLine("CALJ:ref line=" + linetrack.refOf(0, false) + ","
+        + linetrack.refOf(1, false) + "," + linetrack.refOf(2, false) + ","
+        + linetrack.refOf(3, false))
+    diffDrive.emitLine("CALJ:ref bkgd=" + linetrack.refOf(0, true) + ","
+        + linetrack.refOf(1, true) + "," + linetrack.refOf(2, true) + ","
+        + linetrack.refOf(3, true))
+    diffDrive.emitLine("CALJ:bar=" + caljBar(linetrack.lineBits())
+        + " gray=" + linetrack.grayOf(0) + "," + linetrack.grayOf(1)
+        + "," + linetrack.grayOf(2) + "," + linetrack.grayOf(3))
+})
+diffDrive.runSignature("barref", "()")
