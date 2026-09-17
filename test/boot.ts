@@ -210,7 +210,20 @@ if (control.deviceName() == "vevov") {
     // is zeta = (L/2)*sqrt(Kp/v), so the arm alone costs a factor of ~8. Kp here
     // is what `calzeta` picks for zeta = 1 at lever 1.9 and speed 5.
     CALJ_SPEED = 5
-    CALJ_KP = 5.54
+    // Kp 2.0, NOT the 5.54 calzeta computes for zeta = 1 at this lever. The
+    // theory ignores the steering clamp: at Kp 5.54 any error past 0.45 cm
+    // saturates CALJ_MAX_STEER, which at speed 5 means wheels at 7.5 and 2.5 --
+    // a turning radius near 5.6 cm. The loop stops being proportional and
+    // becomes bang-bang, and MEASURED vevov 2026-09-17 it spiralled off the
+    // line (err 0.6 -> 1.2 -> 3.6, steer pinned, encoder counts 1066 vs 455).
+    //
+    // Kp 2.0 needs 1.0 cm of error to clamp instead of 0.45, and completed the
+    // course: measured 90.5 cm against a TAPE-MEASURED 90.2, rms 0.78 cm,
+    // acq 0 ticks. zeta is then 0.6 -- underdamped on paper, and the 9.9
+    // crossings/m says so -- but a gain the actuator can actually deliver beats
+    // a gain that is correct only until it saturates.
+    CALJ_KP = 2.0
+    CALJ_MAX_STEER = 2.0
     CALJ_LEVER = 1.9
     // Wheel travel per shaft degree, MEASURED on vevov 2026-09-15 by calibratel
     // (captures/calibratel-vevov-20260915/). calj sets its own baseline at the

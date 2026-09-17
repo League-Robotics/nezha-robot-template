@@ -256,6 +256,7 @@ function runCalibrateJ(trueCm: number) {
     let acquired = false
     let acqTicks = 0
     let deadRun = 0
+    let lastEnc = diffDrive.probe(10) + diffDrive.probe(11)
     const startedAt = control.millis()
 
     diffDrive.setWheelSpeeds(CALJ_SPEED, CALJ_SPEED)
@@ -375,18 +376,26 @@ function runCalibrateJ(trueCm: number) {
         //
         // A robot that cannot measure its own motion must not be driven on a
         // limit derived from that measurement.
-        if (x == lastX) {
+        // Watch the ENCODER COUNTS, not poseX. poseX stalls legitimately while
+        // the robot turns hard -- during a saturated correction it can even run
+        // backwards -- so testing it FALSELY ABORTED a healthy run on vevov
+        // 2026-09-17 with "odometry is DEAD" while posl/posr were advancing
+        // 1066 and 455. The counts are the thing that actually stops when the
+        // I2C bus wedges, which is what this guard is for.
+        const encNow = diffDrive.probe(10) + diffDrive.probe(11)
+        if (encNow == lastEnc) {
             deadRun++
             if (deadRun >= CALJ_DEAD_TICKS) {
-                bailed = "odometry is DEAD -- poseX has not moved in " + deadRun
-                    + " commanded ticks. The encoders are not reporting, so every"
-                    + " distance limit in this run is inert. Check i2cf against cyc"
-                    + " in TLM FULL: near-equal means the I2C bus is failing."
+                bailed = "encoders are DEAD -- posl+posr has not changed in "
+                    + deadRun + " commanded ticks, so every distance limit in this"
+                    + " run is inert. Check i2cf against cyc in TLM FULL:"
+                    + " near-equal means the I2C bus is failing."
                 break
             }
         } else {
             deadRun = 0
         }
+        lastEnc = encNow
 
         lastX = x
         // Budget the COURSE, not the whole drive: `x` counts from where the
