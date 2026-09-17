@@ -178,8 +178,40 @@ if (control.deviceName() == "vevov") {
     // own doc), so the first line alone moves left to M2 and right to M1. The
     // second line then only sets the right-hand direction, because right is
     // already on M1 by then.
-    diffDrive.configureMotor(MotorSide.Left, MotorPort.M2, MotorDirection.Forward)
-    diffDrive.configureMotor(MotorSide.Right, MotorPort.M1, MotorDirection.Reversed)
+    // CORRECTED 2026-09-17, MEASURED, replacing a guess taken from vevov.json.
+    // That file says left_port 2 / right_port 1 / fwd_sign_right -1, and the
+    // guard written from it drove STRAIGHT correctly but turned the WRONG WAY:
+    // `turn 20` reported odom +21.67 deg while the camera measured -18.26.
+    // Straight-right-but-rotation-mirrored is the signature of left and right
+    // being exchanged -- equal wheel speeds are identical under a swap, so only
+    // a differential reveals it, and nothing that drives in a line will.
+    //
+    // It is not a cosmetic fault: with the steering sign inverted every calj
+    // correction drives the error OUTWARD. The failed run of 2026-09-17 shows
+    // it exactly -- err 0.6 -> 1.2 -> 3.6 with steer pinned at the clamp,
+    // diverging monotonically instead of oscillating, until the blind-stripe
+    // guard stopped it 6 cm off the line.
+    //
+    // VERIFIED on both axes with the runtime `wiretune` verb: rotation +37 deg
+    // on a +20 command (sign now correct), and a straight nudge travelled along
+    // bearing 162.4 deg against an actual yaw of 161.7 -- forward is forward.
+    diffDrive.configureMotor(MotorSide.Left, MotorPort.M1, MotorDirection.Reversed)
+    diffDrive.configureMotor(MotorSide.Right, MotorPort.M2, MotorDirection.Forward)
+    // Straddle gains for vevov's SHORT sensor arm. PXT compiles every file into
+    // one scope, so these assign calibratej.ts's own tunables directly, and
+    // pxt.json lists that file before this one so they are initialised first.
+    //
+    // These are baked rather than left to `caltune` because the tune verbs write
+    // RAM only. A power cycle silently reverted them on 2026-09-17 and calj then
+    // ran on gopiv's speed=8 kp=1.1 -- the wrong gains for a 2 cm arm, and the
+    // run announced exactly that in its own CALJ:begin line before driving.
+    //
+    // vevov's bar sits ~2 cm ahead of the axle against gopiv's ~17, and damping
+    // is zeta = (L/2)*sqrt(Kp/v), so the arm alone costs a factor of ~8. Kp here
+    // is what `calzeta` picks for zeta = 1 at lever 1.9 and speed 5.
+    CALJ_SPEED = 5
+    CALJ_KP = 5.54
+    CALJ_LEVER = 1.9
     // Wheel travel per shaft degree, MEASURED on vevov 2026-09-15 by calibratel
     // (captures/calibratel-vevov-20260915/). calj sets its own baseline at the
     // start of every run, so this only affects ordinary driving, not the

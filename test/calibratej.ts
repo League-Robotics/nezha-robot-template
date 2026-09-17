@@ -650,6 +650,37 @@ diffDrive.onRun("calzeta", function (arg) {
 })
 diffDrive.runSignature("calzeta", "(zeta:number=1)")
 
+// Re-wire a motor AT RUNTIME, so a wiring hypothesis costs a wire command
+// instead of a 90-second reflash.
+//
+// MEASURED vevov 2026-09-17: the boot guard derived from vevov.json
+// (left_port 2, right_port 1, fwd_sign_right -1) drives STRAIGHT correctly but
+// turns the WRONG WAY -- `turn 20` reported odom +21.67 deg while the camera
+// measured -18.26. Straight-right-but-rotation-mirrored is the signature of
+// left and right being exchanged: equal wheel speeds are identical under a
+// swap, and only a differential reveals it.
+//
+// That is fatal to calj specifically, and it is not a gain problem. With the
+// steering sign inverted every correction drives the error outward, which is
+// exactly what the failed run showed: err 0.6 -> 1.2 -> 3.6 with steer pinned
+// at the clamp, diverging monotonically rather than oscillating.
+//
+// side: 0 = left, 1 = right.  port: 1..4 = M1..M4.  dir: 1 = forward,
+// 2 = reversed. Reports the resulting geometry so a trial is self-documenting.
+diffDrive.onRun("wiretune", function (arg) {
+    const side = runNumber(0, 0)
+    const port = runNumber(1, 1)
+    const dir = runNumber(2, 1)
+    diffDrive.configureMotor(
+        side == 1 ? MotorSide.Right : MotorSide.Left,
+        port == 4 ? MotorPort.M4 : port == 3 ? MotorPort.M3
+            : port == 2 ? MotorPort.M2 : MotorPort.M1,
+        dir == 2 ? MotorDirection.Reversed : MotorDirection.Forward)
+    diffDrive.emitLine("CALJ:wire side=" + (side == 1 ? "right" : "left")
+        + " port=M" + port + " dir=" + (dir == 2 ? "reversed" : "forward"))
+})
+diffDrive.runSignature("wiretune", "(side:number,port:number,dir:number)")
+
 diffDrive.onRun("calj", function (arg) { runCalibrateJ(runNumber(0, CALJ_TRUE_CM)) })
 diffDrive.runSignature("calj", "(cm:number=90.5)")
 
