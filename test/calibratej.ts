@@ -148,6 +148,11 @@ const CALJ_HUNT_CM = 25       // cm to find the start line before giving up
 const CALJ_EXTRA_CM = 25      // cm of slack past the expected finish
 const CALJ_MAX_SECS = 60      // s for the whole run; a stalled robot stops its
                               // pose too, so a distance limit alone never fires
+const CALJ_DEAD_TICKS = 25    // consecutive commanded ticks with poseX() not
+                              // moving AT ALL before the run is abandoned. See
+                              // the dead-odometry guard in the drive loop: the
+                              // seconds budget is NOT a safe backstop, because
+                              // 60 s at 8 cm/s is 480 cm on a 134 cm field.
 const CALJ_TRK_EVERY = 25     // ticks between tracking diagnostics
 const CALJ_ALL = 15           // all four channel bits
 const CALJ_OUTER = 9          // channels 0 and 3
@@ -250,6 +255,7 @@ function runCalibrateJ(trueCm: number) {
     let blindRun = 0
     let acquired = false
     let acqTicks = 0
+    let deadRun = 0
     const startedAt = control.millis()
 
     diffDrive.setWheelSpeeds(CALJ_SPEED, CALJ_SPEED)
@@ -349,6 +355,37 @@ function runCalibrateJ(trueCm: number) {
                     + "cm bar=" + caljBar(bits) + " err=" + lineRound(err, 2)
                     + " steer=" + lineRound(steer, 2))
             }
+        }
+
+        // ---- DEAD ODOMETRY IS NOT A SLOW ROBOT --------------------------
+        // EVERY distance guard in this file -- the start-line hunt, the course
+        // budget, the finish detector -- is a comparison against poseX(). If
+        // the encoders stop reporting, poseX() stays 0, NONE of those
+        // comparisons can ever come true, and the only thing left standing is
+        // the seconds budget. That is not a backstop: 60 s at 8 cm/s is 480 cm,
+        // on a field 134 cm wide.
+        //
+        // MEASURED vevov 2026-09-16: i2cf 1252 against cyc 1264 -- about 99% of
+        // control cycles faulting on I2C, with posl and posr both exactly 0.
+        // Motor commands still got through, so a `sweep` bounded to 10 cm drove
+        // 111 cm into the corner of the field: its 10 cm bound was inert and
+        // only the 30 s timeout ever stopped it. The warning was visible two
+        // commands earlier -- nudges that moved 0.8 mm while reporting x=0 --
+        // and was read as a breakaway problem instead of dead encoders.
+        //
+        // A robot that cannot measure its own motion must not be driven on a
+        // limit derived from that measurement.
+        if (x == lastX) {
+            deadRun++
+            if (deadRun >= CALJ_DEAD_TICKS) {
+                bailed = "odometry is DEAD -- poseX has not moved in " + deadRun
+                    + " commanded ticks. The encoders are not reporting, so every"
+                    + " distance limit in this run is inert. Check i2cf against cyc"
+                    + " in TLM FULL: near-equal means the I2C bus is failing."
+                break
+            }
+        } else {
+            deadRun = 0
         }
 
         lastX = x
