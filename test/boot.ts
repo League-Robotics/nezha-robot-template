@@ -225,11 +225,20 @@ if (control.deviceName() == "vevov") {
     CALJ_KP = 2.0
     CALJ_MAX_STEER = 2.0
     CALJ_LEVER = 1.9
-    // Wheel travel per shaft degree, MEASURED on vevov 2026-09-15 by calibratel
-    // (captures/calibratel-vevov-20260915/). calj sets its own baseline at the
-    // start of every run, so this only affects ordinary driving, not the
-    // calibration's answer.
-    diffDrive.setWheelCalibration(0.79324)
+    // Wheel travel per shaft degree, MEASURED on vevov 2026-09-17 by calj:
+    // three straddled runs of the eye field against a TAPE-MEASURED 90.2 cm,
+    // measuring 90.5 / 90.35 / 90.5 and giving 0.7852 / 0.7865 / 0.7852. Mean
+    // 0.7856, sd 0.00075 (0.096%), standard error 0.055% -- a 0.28% correction
+    // to the compiled 0.7878 default, implying a 90.03 mm wheel.
+    //
+    // Corroborated across the fleet: gopiv measured 90.07 mm and tigez 90.1 mm,
+    // so three robots agree inside 0.08%. radio-robot-lib's vevov.json claims
+    // 80.77 mm -- boilerplate shared with two other configs, wrong by 11%.
+    //
+    // Supersedes 0.79324 from calibratel 2026-09-15. calj sets its own baseline
+    // at the start of every run, so this affects ordinary driving only, never
+    // the calibration's own answer.
+    diffDrive.setWheelCalibration(0.7856)
     // Track width CALIPER-MEASURED by Eric 2026-09-16: 111.6 mm. The config had
     // carried 128.0, which is about one tyre width larger and reads as an
     // outside-to-outside span. With the true width the slip falls to
