@@ -19,6 +19,7 @@
         "test/calibratel.ts",
         "test/calibratej.ts",
         "test/calibratet.ts",
+        "test/calibratec.ts",
         "test/linetrack.ts",
         "test/boot.ts"
     ],
