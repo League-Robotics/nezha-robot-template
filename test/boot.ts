@@ -178,23 +178,32 @@ if (control.deviceName() == "vevov") {
     // own doc), so the first line alone moves left to M2 and right to M1. The
     // second line then only sets the right-hand direction, because right is
     // already on M1 by then.
-    // CORRECTED 2026-09-17, MEASURED, replacing a guess taken from vevov.json.
-    // That file says left_port 2 / right_port 1 / fwd_sign_right -1, and the
-    // guard written from it drove STRAIGHT correctly but turned the WRONG WAY:
-    // `turn 20` reported odom +21.67 deg while the camera measured -18.26.
-    // Straight-right-but-rotation-mirrored is the signature of left and right
-    // being exchanged -- equal wheel speeds are identical under a swap, so only
-    // a differential reveals it, and nothing that drives in a line will.
+    // THESE TWO LINES MATCH THE EXTENSION'S COMPILED DEFAULT EXACTLY, and are
+    // kept only to say so out loud. pxt-nezha-diffdrive's shims.cpp already
+    // declares, for vevov specifically:
+    //     NezhaMotorPort left{1, -1};    // left = M1, mirrored
+    //     NezhaMotorPort right{2, +1};   // right = M2
+    // camera-verified there on 2026-08-20. Setting them again is a no-op.
     //
-    // It is not a cosmetic fault: with the steering sign inverted every calj
-    // correction drives the error OUTWARD. The failed run of 2026-09-17 shows
-    // it exactly -- err 0.6 -> 1.2 -> 3.6 with steer pinned at the clamp,
-    // diverging monotonically instead of oscillating, until the blind-stripe
-    // guard stopped it 6 cm off the line.
+    // DO NOT "CORRECT" THIS FROM radio-robot-lib's vevov.json. That file says
+    // left_port 2 / right_port 1 / fwd_sign_right -1, which is NOT the same
+    // convention as the extension's MotorPort labels, and a guard written
+    // faithfully from it puts left on M2 and right on M1 -- swapping the side
+    // labels against an already-correct default.
     //
-    // VERIFIED on both axes with the runtime `wiretune` verb: rotation +37 deg
-    // on a +20 command (sign now correct), and a straight nudge travelled along
-    // bearing 162.4 deg against an actual yaw of 161.7 -- forward is forward.
+    // MEASURED 2026-09-17, the cost of doing exactly that: the robot drove
+    // straight correctly and turned the WRONG WAY (`turn 20` reported odom
+    // +21.67 deg while the camera measured -18.26). Equal wheel speeds are
+    // identical under a side swap, so nothing that drives in a line can detect
+    // it -- and with the steering sign inverted every calj correction drives
+    // the error OUTWARD: err 0.6 -> 1.2 -> 3.6, steer pinned at the clamp,
+    // until the blind-stripe guard stopped the run 6 cm off the line.
+    //
+    // shims.cpp's own comment explains why no sign flip can fix it ("forward
+    // and rotation flip together, so no sign pair gives both; the free variable
+    // is which port is called left") and records the same fault found by camera
+    // on 2026-08-19. That comment predates this session by a month. Read the
+    // firmware for the robot's name before characterising its behaviour.
     diffDrive.configureMotor(MotorSide.Left, MotorPort.M1, MotorDirection.Reversed)
     diffDrive.configureMotor(MotorSide.Right, MotorPort.M2, MotorDirection.Forward)
     // Straddle gains for vevov's SHORT sensor arm. PXT compiles every file into
