@@ -106,7 +106,26 @@ function ccSpread(list: number[]): number {
     return n > 1 ? Math.sqrt(sumSq / (n - 1)) : 0
 }
 
-function runCalibrateC(edges: number) {
+function runCalibrateC(edgesWanted: number) {
+    // THE WINDOW MUST BE A WHOLE NUMBER OF REVOLUTIONS, and this is not a
+    // nicety. Off-centre, the eight apparent sector angles are not 45 each --
+    // MEASURED gopiv 2026-09-17, they swung 48.3, 45.0, 42.2, 40.0 around one
+    // turn, an 8 degree spread on a 45 degree quantity. They still SUM to 360,
+    // so a window of exactly 8 gaps cancels the offset completely; any other
+    // window keeps part of the swing, and the leftover looks EXACTLY like a
+    // calibration error rather than a centring error.
+    //
+    // One gap per channel is discarded (the robot starts mid-sector), so the
+    // usable window is edges-2 and that is what must be a multiple of 8.
+    // `calc 10` gives 8 gaps, one revolution -- which was luck the first time
+    // this ran, not design. `calc 12` would have returned a biased number with
+    // no outward sign of it.
+    const revs = Math.max(1, Math.round((edgesWanted - 2) / 8))
+    const edges = 2 + 8 * revs
+    if (edges != edgesWanted) {
+        diffDrive.emitLine("CALC:edges " + edgesWanted + " -> " + edges
+            + " (the window must be a whole number of revolutions: 8n+2)")
+    }
     diffDrive.setTrackWidth(CC_TRACK)
     diffDrive.setConfigValue(ConfigField.RotationalSlip, CC_SLIP)
     const bAnchor = CC_TRACK / CC_SLIP
