@@ -126,6 +126,11 @@ const CALJ_BLIND_MAX = 40     // consecutive blind ticks (~1s, ~8cm) before the
                               // genuinely gone: gopiv 2026-09-16 drove 165 of
                               // 179 ticks blind at a constant steer=1.32 and
                               // came out 53 deg off course.
+const CALJ_MID_MAX = 40       // consecutive ticks (~7.6cm at CALJ_SPEED) the bar
+                              // may read all-four-dark without it being the
+                              // finish. The mid-field line is 1.9cm wide, about
+                              // 10 ticks; bare dark floor past the paper never
+                              // ends, and reads the same.
 const CALJ_PHASE2_CLEAR = 4   // cm past the start line after which phase 2 ends
                               // NO MATTER what the sensors say. Phase 2 exists
                               // only to get clear of the start line so the finish
@@ -256,6 +261,7 @@ function runCalibrateJ(trueCm: number) {
     let acquired = false
     let acqTicks = 0
     let deadRun = 0
+    let midTicks = 0
     let lastEnc = diffDrive.probe(10) + diffDrive.probe(11)
     const startedAt = control.millis()
 
@@ -282,11 +288,50 @@ function runCalibrateJ(trueCm: number) {
                     + "cm bar=" + caljBar(bits))
             }
         } else {
-            if (bits == CALJ_ALL) {
+            // THE FINISH IS ARMED BY DISTANCE, because all-four-dark is not
+            // unique to the finish line. The secondary playfield's stripe is
+            // crossed by a THIRD full-width line at its midpoint -- surveyed
+            // from the rectified frame 2026-09-17: crossbars at x = -37.5 and
+            // +38.8 cm, and a 1.9 cm line at x = -0.3, squarely between them.
+            // A robot driving that 75.8 cm course reads `####` at about 37 cm,
+            // and taken as the finish it measures half the course -- which the
+            // tolerance guard below then REFUSES, so the run is lost either way.
+            //
+            // The arming threshold is the tolerance guard's own bound. Anything
+            // shorter than (1 - CALJ_TOL_FRAC) * trueCm is thrown away as a
+            // measurement, so accepting it as the finish can only ever turn a
+            // good run into a refused one. A field with no mid-line never
+            // reaches this test before its real finish, so nothing changes there.
+            if (bits == CALJ_ALL && x - xA >= trueCm * (1 - CALJ_TOL_FRAC)) {
                 xB = (lastX + x) / 2
                 phase = 4
                 break
             }
+
+            // A full-width line that is NOT the finish carries NO lateral
+            // information -- every channel is dark wherever the robot sits on
+            // it, so caljEdge() reads it as an edge 0.6 cm left of the aim and
+            // the controller leans into a correction the tape never asked for.
+            // Hold course across it instead, and take no statistics from it.
+            // Bounded, because an all-dark that never ends is not a line: it is
+            // the robot off the paper on bare dark floor.
+            if (bits == CALJ_ALL) {
+                midTicks++
+                if (midTicks == 1) {
+                    diffDrive.emitLine("CALJ:mid-field line at "
+                        + lineRound(x - xA, 1) + "cm -- holding course, not the finish")
+                }
+                if (midTicks >= CALJ_MID_MAX) {
+                    bailed = "all four channels dark for " + midTicks + " ticks at "
+                        + lineRound(x - xA, 1) + "cm -- that is not a line, it is"
+                        + " the robot off the paper"
+                    break
+                }
+                diffDrive.setWheelSpeeds(CALJ_SPEED, CALJ_SPEED)
+                lastX = x
+                continue
+            }
+            midTicks = 0
 
             const edge = caljEdge(bits)
             let err = 0
@@ -469,8 +514,13 @@ function runCalibrateJ(trueCm: number) {
 // relative to the line for the length of the return.
 //
 // It stops at the first full line it crosses (all four dark) and backs clear of
-// it, so it does not depend on knowing the distance.
-function caljHome() {
+// it, so it does not depend on knowing the distance -- EXCEPT where the course
+// has a line across its middle, which the secondary playfield does (see the
+// finish detector above). There `minCm` is the course length, and a full line
+// is only taken for the start line once the return has run far enough that it
+// could be one; the same (1 - CALJ_TOL_FRAC) bound the forward leg arms on.
+// Pass 0 (the default) on a field with nothing between the two ends.
+function caljHome(minCm: number) {
     diffDrive.emitLine("CALJ:home reverse PID kp=" + CALJ_BACK_KP + " kh=" + CALJ_BACK_KH
         + " ki=" + CALJ_BACK_KI + " speed=" + CALJ_BACK_SPEED + "cm/s")
     diffDrive.resetPose()
@@ -502,12 +552,22 @@ function caljHome() {
             // same mistake phase 2 of the forward leg already avoids.
             if ((bits & CALJ_OUTER) == 0) stage = 1
         } else if (stage == 1) {
-            if (bits == CALJ_ALL) { stage = 2; crossedAt = x }
+            if (bits == CALJ_ALL && x >= minCm * (1 - CALJ_TOL_FRAC)) {
+                stage = 2
+                crossedAt = x
+            }
         } else {
             if (bits == 0 && x - crossedAt >= CALJ_BACK_CLEAR) break
         }
 
-        if (stage == 1) {
+        if (stage == 1 && bits == CALJ_ALL) {
+            // The mid-field line, held for the same reason the forward leg
+            // holds it: all four dark says nothing about where the stripe is,
+            // so steering on it walks the robot off. The guards at the foot of
+            // this loop still run -- an all-dark that never ends is bare floor,
+            // and a reverse leg that keeps going on bare floor finds the rails.
+            diffDrive.setWheelSpeeds(-CALJ_BACK_SPEED, -CALJ_BACK_SPEED)
+        } else if (stage == 1) {
             const edge = caljEdge(bits)
             let err = 0
             if (edge > 900) {
@@ -693,8 +753,8 @@ diffDrive.runSignature("wiretune", "(side:number,port:number,dir:number)")
 diffDrive.onRun("calj", function (arg) { runCalibrateJ(runNumber(0, CALJ_TRUE_CM)) })
 diffDrive.runSignature("calj", "(cm:number=90.5)")
 
-diffDrive.onRun("caljhome", function (arg) { caljHome() })
-diffDrive.runSignature("caljhome", "()")
+diffDrive.onRun("caljhome", function (arg) { caljHome(runNumber(0, 0)) })
+diffDrive.runSignature("caljhome", "(cm:number=0)")
 
 // Report the thresholded bits AND the four raw reflectance values side by side,
 // without moving. The bits alone are ambiguous: a set bit means "dark", which is

@@ -62,7 +62,7 @@ const CT_MAX_SWEEP = 250    // deg before giving up
 const CT_BACKOFF = 12       // cm reversed off the crossbar before pivoting
 const CT_BACK_SPEED = 11    // cm/s for that reverse
 const CT_SECS = 45          // s per pivot
-const CT_RECENTRE = 35      // cm driven under the straddle controller before each
+let CT_RECENTRE = 35        // cm driven under the straddle controller before each
                             // pivot PAIR. NOT just to fix lateral position -- to
                             // settle HEADING. A `..#.` reading pins where the
                             // robot sits on the edge but says nothing about which
@@ -79,7 +79,17 @@ const CT_RECENTRE = 35      // cm driven under the straddle controller before ea
                             // 186.5 on different runs).
 const CT_SETTLE = 25        // consecutive in-deadband ticks required before the
                             // pivot may start, so it never begins mid-correction
-const CT_SETTLE_EXTRA = 25  // cm of extra travel allowed while waiting to settle
+let CT_SETTLE_EXTRA = 25    // cm of extra travel allowed while waiting to settle
+// BOTH ARE `let`, and set over the wire by `cttune`, because where the pivot
+// HAPPENS is a property of the field, not of the robot. The pivot sweeps the
+// sensor bar around a circle of the lever's radius, and every piece of tape
+// that circle touches becomes a false entry angle. On the secondary playfield
+// a third full-width line crosses the stripe at its midpoint (surveyed
+// 2026-09-17: crossbars at -37.5 and +38.8 cm, the mid line at -0.3), so a
+// 35 cm recentre from the west crossbar stops the robot right on top of it.
+// Driving further -- far enough to put the pivot between the mid line and the
+// finish -- is the fix, and it costs nothing: a longer line-follow settles the
+// heading better, which is the whole point of the drive.
 //
 // ---- WHY RE-CENTRING IS NOT OPTIONAL --------------------------------------
 // The midpoint estimator is NOT independent of lateral position, though an
@@ -123,7 +133,14 @@ function ctRecentre(cm: number): boolean {
         const x = diffDrive.poseX()
         const bits = linetrack.lineBits()
         const edge = caljEdge(bits)
-        if (edge > 900) {
+        if (bits == CALJ_ALL) {
+            // A full-width line under every channel -- the mid-field line on
+            // this course. It carries no lateral information, so hold course
+            // and leave `settled` alone rather than reading it as a 0.6 cm
+            // error and throwing away a settle that was already earned.
+            diffDrive.setWheelSpeeds(CALJ_SPEED, CALJ_SPEED)
+            blind = 0
+        } else if (edge > 900) {
             blind++
             if (blind > 60) { diffDrive.stop(); return false }
         } else {
@@ -295,6 +312,9 @@ diffDrive.runSignature("calt", "(pairs:number=2)")
 // not break away in reverse much below 10 cm/s, so there is a floor.
 diffDrive.onRun("cttune", function (arg) {
     CT_SPEED = runNumber(0, CT_SPEED)
-    diffDrive.emitLine("CALT:tune speed=" + CT_SPEED + "cm/s")
+    CT_RECENTRE = runNumber(1, CT_RECENTRE)
+    CT_SETTLE_EXTRA = runNumber(2, CT_SETTLE_EXTRA)
+    diffDrive.emitLine("CALT:tune speed=" + CT_SPEED + "cm/s recentre=" + CT_RECENTRE
+        + "cm extra=" + CT_SETTLE_EXTRA + "cm")
 })
-diffDrive.runSignature("cttune", "(speed:number)")
+diffDrive.runSignature("cttune", "(speed:number,recentre:number,extra:number)")
