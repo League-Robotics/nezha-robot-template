@@ -218,7 +218,13 @@ if (control.deviceName() == "vevov") {
     // vevov's bar sits ~2 cm ahead of the axle against gopiv's ~17, and damping
     // is zeta = (L/2)*sqrt(Kp/v), so the arm alone costs a factor of ~8. Kp here
     // is what `calzeta` picks for zeta = 1 at lever 1.9 and speed 5.
-    CALJ_SPEED = 5
+    // ARM LENGTHENED 2026-09-17 to ~10 cm (stakeholder), from the ~4.3 cm the
+    // calt outer channels had measured. The tuning below is gopiv's, which is
+    // proven on a long arm (17 cm) -- not the speed 5 / Kp 2.0 worked out for
+    // the short mount, which was chosen to fight a damping deficit that no
+    // longer exists.
+    //
+    // Superseded reasoning, kept because it was wrong in an instructive way:
     // Kp 2.0, NOT the 5.54 calzeta computes for zeta = 1 at this lever. The
     // theory ignores the steering clamp: at Kp 5.54 any error past 0.45 cm
     // saturates CALJ_MAX_STEER, which at speed 5 means wheels at 7.5 and 2.5 --
@@ -231,9 +237,10 @@ if (control.deviceName() == "vevov") {
     // acq 0 ticks. zeta is then 0.6 -- underdamped on paper, and the 9.9
     // crossings/m says so -- but a gain the actuator can actually deliver beats
     // a gain that is correct only until it saturates.
-    CALJ_KP = 2.0
-    CALJ_MAX_STEER = 2.0
-    CALJ_LEVER = 1.9
+    CALJ_SPEED = 8
+    CALJ_KP = 1.1
+    CALJ_MAX_STEER = 2.5
+    CALJ_LEVER = 10
     // Wheel travel per shaft degree, MEASURED on vevov 2026-09-17 by calj:
     // three straddled runs of the eye field against a TAPE-MEASURED 90.2 cm,
     // measuring 90.5 / 90.35 / 90.5 and giving 0.7852 / 0.7865 / 0.7852. Mean

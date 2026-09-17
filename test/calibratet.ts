@@ -318,3 +318,56 @@ diffDrive.onRun("cttune", function (arg) {
         + "cm extra=" + CT_SETTLE_EXTRA + "cm")
 })
 diffDrive.runSignature("cttune", "(speed:number,recentre:number,extra:number)")
+
+// One instrumented pivot that logs the odometry heading at EVERY bit-pattern
+// change, rather than only at the four first-entries caltPivot records.
+//
+// Eric's technique, 2026-09-17: track the left interface (`..#.`, channel 2
+// dark and channel 1 white), over-rotate CLOCKWISE 10-20 deg until channel 0
+// picks up the black -- which both proves you are past it and winds the
+// drivetrain against its backlash in a known direction -- then rotate back
+// COUNTER-CLOCKWISE and measure between sensor events rather than between
+// odometry readings.
+//
+// The angle between two adjacent channel crossings is set by how far the bar
+// must swing to move the stripe edge from one channel's threshold to the next,
+// divided by the lever radius. Logging every transition rather than two means
+// all the pairwise angles survive in the trace, so the estimator can be chosen
+// afterwards -- and the lever falls out of the OUTER channel spread, which is
+// well conditioned (tens of degrees) where the inner spread is only a few.
+//
+// `deg` is signed: + is CCW. setWheelSpeeds is refreshed EVERY tick because
+// that is the one pattern observed to sustain a long drive on this fleet;
+// drives that set it once have been dying after a few ticks for reasons still
+// not understood (2026-09-17).
+diffDrive.onRun("calspin", function (arg) {
+    const want = runNumber(0, 30)
+    const spd = runNumber(1, CT_SPEED)
+    const dir = want < 0 ? -1 : 1
+    diffDrive.resetPose()
+    let last = linetrack.lineBits()
+    let changes = 0
+    const startedAt = control.millis()
+    diffDrive.emitLine("CALS:begin want=" + want + "deg speed=" + spd
+        + "cm/s bar=" + caljBar(last))
+    diffDrive.setWheelSpeeds(-dir * spd, dir * spd)
+    while (diffDrive.driveTick()) {
+        const h = diffDrive.heading()
+        const bits = linetrack.lineBits()
+        if (bits != last) {
+            changes++
+            diffDrive.emitLine("CALS:h=" + lineRound(h, 2) + "deg bar="
+                + caljBar(bits) + " gray=" + linetrack.grayOf(0) + ","
+                + linetrack.grayOf(1) + "," + linetrack.grayOf(2) + ","
+                + linetrack.grayOf(3))
+            last = bits
+        }
+        if (Math.abs(h) >= Math.abs(want)) break
+        if (control.millis() - startedAt > CT_SECS * 1000) break
+        diffDrive.setWheelSpeeds(-dir * spd, dir * spd)
+    }
+    diffDrive.stop()
+    diffDrive.emitLine("CALS:end h=" + lineRound(diffDrive.heading(), 2)
+        + "deg bar=" + caljBar(linetrack.lineBits()) + " changes=" + changes)
+})
+diffDrive.runSignature("calspin", "(deg:number=30,speed:number=5)")
