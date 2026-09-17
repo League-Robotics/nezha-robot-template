@@ -162,7 +162,26 @@ if (control.deviceName() == "gopiv") {
     // that error, doubled. The pair mean cancels it. Individual pivots scattered
     // across 161-186 deg before pairing and settling were enforced.
     diffDrive.setTrackWidth(11.42)
-    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.957)
+    // REFINED 2026-09-17 by calc (Calibrate C, test/calibratec.ts) on the
+    // alternating iron cross: b = 11.879 cm, so slip = 11.42/11.879 = 0.9613,
+    // a 0.45% correction to the 0.957 calt gave.
+    //
+    // Three runs at 70 deg/s: 11.869, 11.899, 11.870 -- sd 0.017 cm (0.14%).
+    // Five earlier runs at 30 deg/s spread 11.628..11.835, sd 0.093 (0.79%),
+    // and their MEAN was 1.3% lower. That gap is a bias, not scatter: below
+    // ~60 deg/s the reversing wheel does not break away (see calibratec.ts's
+    // CC_SPIN note), the robot arcs about the stalled wheel instead of
+    // pivoting, and a stalled wheel inflates (dRight - dLeft) for a given real
+    // rotation. Averaging those runs could never have found it.
+    //
+    // WHY THIS IS TRUSTWORTHY WHERE THE EARLIER NUMBERS WERE NOT: calt measured
+    // 11.93 from stripe-edge entry angles on 180 deg pivots, calc measures
+    // 11.879 from radial sector crossings. The two share no assumptions -- calc
+    // does not involve the lever arm at all, and its eight sectors sum to 360
+    // whatever the centring -- and they now agree to 0.43%, against 1.5% when
+    // calc ran too slowly. Independent methods converging is the evidence here;
+    // neither number alone was.
+    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.9613)
 }
 
 if (control.deviceName() == "vevov") {
