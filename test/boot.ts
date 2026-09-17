@@ -269,6 +269,61 @@ if (control.deviceName() == "vevov") {
     // pick Kp for it -- that is what those verbs exist for.
 }
 
+if (control.deviceName() == "tigez") {
+    // Measured on the SECONDARY playfield 2026-09-17 against a TAPE-MEASURED
+    // 75.8 cm between the crossbars (captures/calibratej-tigez-20260917/).
+    //
+    // WHEEL TRAVEL: no correction. calj over ten runs measured 75.865 cm mean
+    // against the tape's 75.8 -- an error of +0.09%, with a standard error of
+    // 0.157%. The compiled default of 0.7878 mm/deg (a 90.28 mm wheel) is
+    // already right to better than this method can resolve here, so there is
+    // nothing to bake and `setWheelCalibration` is deliberately NOT called.
+    // The fleet agrees: gopiv 90.07 mm, vevov 90.03, tigez 90.20 +- 0.14.
+    //
+    // What `calibration.json` claims for tigez -- a 116.05 mm wheel -- is wrong
+    // by 29% and should not be used by anything.
+    //
+    // The ten runs split into two clusters by how the robot was staged (76.23
+    // +- 0.15 by the robot's own return leg, 75.71 +- 0.33 by the camera), and
+    // that 0.7% systematic is larger than the correction being looked for. It
+    // is why no correction is baked rather than a small one: see the bench log,
+    // which also records the sensor-bar skew behind it.
+    //
+    // THE SENSOR BAR IS MOUNTED SKEW, about 7 deg. Driven square to the start
+    // crossbar the four channels meet it 0.7 cm apart (1.5, 1.9, 2.0, 2.2 cm),
+    // a least-squares 6.6 deg; rotating the chassis until the camera read 8 deg
+    // made all four trigger in the same tick. calj takes both its triggers on
+    // the same event so a CONSTANT skew cancels in the difference -- but it also
+    // means "square by the camera" and "square to the tape" are different poses
+    // on this robot, and the staging has to choose one deliberately.
+    CALJ_LEVER = 9              // cm, axle to sensor bar (Eric, measured). With
+                                // the compiled speed 8 and Kp 1.1 that is
+                                // zeta 1.67 -- near enough to critical that
+                                // nothing needed tuning, unlike gopiv (3.15) or
+                                // vevov (0.6). Tracking bears it out: 0-1.3
+                                // crossings/m against gopiv's 2.2-5.5 and
+                                // vevov's 7.7-9.9.
+    // EFFECTIVE TRACK WIDTH, measured by calt (Calibrate T) from a
+    // sensor-defined 180: five well-settled pairs read 176.53, 174.47, 176.05,
+    // 173.08 and 173.68 deg of odometry for a true 180 -- mean 174.76, sd 1.49,
+    // standard error 0.67 deg. So b = 12.0 * 174.76/180 = 11.647 cm, a 2.9%
+    // correction from the compiled 11.996 and about 8 sigma.
+    //
+    // Corroborated independently by the overhead camera on this robot's own
+    // turns: a commanded -30 read -33.15 deg of odometry against -35.0 by
+    // camera, and a -76 read -76.72 against -78.7. Those ratios (0.947, 0.975)
+    // put a true 180 at 170-176 deg of odometry, which is where calt landed.
+    //
+    // A SIXTH pair read 169.23 and is excluded: it settled only 25 ticks (the
+    // minimum) and its two halves split 4.63 deg. Settle quality is the
+    // discriminator here exactly as it was on gopiv -- and it matters MORE on
+    // tigez, because the pivot's sensitivity to a lateral offset is
+    // arcsin(d/r) and this robot's r is 9 cm against gopiv's 17. The same
+    // half-centimetre of offset is twice the error.
+    diffDrive.setTrackWidth(11.42)
+    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.9805)
+}
+
 //radio.setGroup(11)
 //let channel = "J"
 //radio.setFrequencyBand(parseInt(channel, 36) + 10)
