@@ -501,6 +501,29 @@ function runCalibrateJ(trueCm: number) {
         + "ticks acq=" + acqTicks + "ticks")
     diffDrive.emitLine("CALJ:bias=" + lineRound(bias, 3) + "cm/s heading="
         + lineRound(diffDrive.heading(), 2) + "deg")
+    // ONE MACHINE-READABLE LINE, for the robot console and anything else that
+    // parses a run rather than reading it. The lines above are laid out for a
+    // human and put several values on a line (`calib=... diameter=...`), which
+    // makes an anchored regex miss everything but the first. This repeats them
+    // as flat key=value pairs, space separated, no units glued to the numbers,
+    // stable order. Values are duplicated on purpose -- the human lines are not
+    // going away, and a parser should never have to read them.
+    //
+    // calib is THE ANSWER: millimetres of wheel travel per shaft degree.
+    // diameter is the same number expressed as a wheel, for sanity-checking by
+    // eye against a ruler. quality is what says whether to believe the run:
+    // rms and crossings are how hard the straddle controller was working, blind
+    // is how many ticks the stripe sat in the sensor's blind gap.
+    diffDrive.emitLine("CALJ:result calib=" + lineRound(corrected, 4)
+        + " diameter=" + lineRound(diameter, 2)
+        + " measured=" + lineRound(measured, 2)
+        + " true=" + trueCm
+        + " error=" + lineRound(measured - trueCm, 2)
+        + " rms=" + lineRound(rms, 2)
+        + " crossings=" + lineRound(perM, 1)
+        + " blind=" + blindTicks
+        + " ticks=" + nTicks
+        + " acq=" + acqTicks)
     diffDrive.emitLine("CALJ:apply diffDrive.setWheelCalibration(" + lineRound(corrected, 4) + ")")
     basic.showIcon(IconNames.Yes)
 }

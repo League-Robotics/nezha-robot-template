@@ -245,6 +245,10 @@ function runCalibrateC(edgesWanted: number) {
     // ---- report -----------------------------------------------------------
     let grand = 0
     let grandN = 0
+    let worstSd = 0
+    let chLo = 1e9
+    let chHi = -1e9
+    let chUsable = 0
     for (let c = 0; c < 4; c++) {
         const list = ccEdgesFor(c)
         const mean = ccMeanGap(list)
@@ -253,8 +257,13 @@ function runCalibrateC(edgesWanted: number) {
                 + " transitions)")
             continue
         }
+        const sd = ccSpread(list)
+        if (sd > worstSd) worstSd = sd
+        if (mean < chLo) chLo = mean
+        if (mean > chHi) chHi = mean
+        chUsable++
         diffDrive.emitLine("CALC:ch" + c + " n=" + list.length + " meangap="
-            + lineRound(mean, 3) + "deg sd=" + lineRound(ccSpread(list), 3)
+            + lineRound(mean, 3) + "deg sd=" + lineRound(sd, 3)
             + " slope=" + lineRound(mean / CC_SECTOR, 4))
         grand += mean * (list.length - 2)
         grandN += list.length - 2
@@ -277,9 +286,49 @@ function runCalibrateC(edgesWanted: number) {
     diffDrive.emitLine("CALC:b=" + lineRound(bTrue, 3) + "cm was "
         + lineRound(bAnchor, 3) + "cm  slip=" + lineRound(slipTrue, 4)
         + " was " + CC_SLIP)
+    // ONE MACHINE-READABLE LINE, flat key=value pairs for the robot console.
+    // See calibratej.ts's CALJ:result for why the human lines are not enough.
+    //
+    // READ THIS BEFORE APPLYING slip FROM A calc RUN. `b` is the measurement
+    // and the only thing this run actually establishes. `slip` is NOT a robot
+    // constant: it is CC_TRACK/b, computed against the ANCHOR track width this
+    // run wrote before it started, and the anchor is the compiled default, not
+    // the robot's real track. Applying it to a robot whose track width differs
+    // from the anchor mis-calibrates it by exactly that ratio -- and across
+    // this fleet the caliper widths are 111.4, 111.6, 113.6 and 114.4 mm
+    // against an anchor of 114.2, so that error is real on every one of them.
+    //
+    // The correct use is: slip = <that robot's caliper track width> / b, with
+    // the track width coming from radio-robot-lib config/robots/<name>.json.
+    // Nothing in the TS API can read the robot's geometry back, so this run
+    // cannot do that division itself -- which is precisely why the field is
+    // named slip_vs_anchor rather than slip, and why anchor_track is emitted
+    // beside it. A consumer that wants a slip must supply the track width.
+    diffDrive.emitLine("CALC:result b=" + lineRound(bTrue, 3)
+        + " anchor_track=" + CC_TRACK
+        + " anchor_b=" + lineRound(bAnchor, 3)
+        + " slip_vs_anchor=" + lineRound(slipTrue, 4)
+        + " slope=" + lineRound(slope, 4)
+        + " meangap=" + lineRound(meanGap, 3)
+        + " sector=" + CC_SECTOR
+        + " gaps=" + grandN
+        + " channels=" + chUsable
+        + " worst_sd=" + lineRound(worstSd, 3)
+        + " ch_spread=" + lineRound(chUsable > 0 ? chHi - chLo : 0, 3)
+        + " spin_cmd=" + CC_SPIN
+        + " wheel_cm_s=" + lineRound(wheel, 2))
+    // worst_sd and ch_spread are the quality gauges, and they measure the same
+    // thing two ways: how steadily the robot held a pivot. MEASURED across the
+    // fleet 2026-09-17, worst_sd tracked how far the robot walked per
+    // revolution -- tigez 3.7 deg at 0.25 cm, gopiv 7.6 at 0.5, vevov 9.8 at
+    // 0.5 systematic. ch_spread is the disagreement between the four channels'
+    // own means, which for a FIXED centre must be zero: every channel sees all
+    // eight sectors over a whole revolution, so each one's mean is 45 exactly.
+    // Anything above ~0.2 deg is the centre moving during the run.
     diffDrive.emitLine("CALC:apply diffDrive.setTrackWidth(" + CC_TRACK
         + "); diffDrive.setConfigValue(ConfigField.RotationalSlip, "
-        + lineRound(slipTrue, 4) + ")")
+        + lineRound(slipTrue, 4) + ")  -- ONLY valid if this robot's track"
+        + " width really is " + CC_TRACK + "cm; otherwise use b=" + lineRound(bTrue, 3))
     basic.showIcon(IconNames.Yes)
 }
 
