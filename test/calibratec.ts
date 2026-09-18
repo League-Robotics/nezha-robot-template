@@ -54,6 +54,27 @@ const CC_SPIN = 70           // deg/s. One ~24 ms tick is 1.7 deg, so a single
                              // transition is placed to within half a tick;
                              // averaging 32 gaps takes that well below 0.1 deg.
                              //
+                             // THIS IS A COMMANDED RATE AGAINST THE ANCHOR, not
+                             // the rate the robot actually turns. The wheel
+                             // speed below is derived from b_anchor (11.996),
+                             // so every robot spins its wheels at the SAME
+                             // 73.3 mm/s -- but the yaw rate that produces is
+                             // CC_SPIN * b_anchor / b_true, which is only 70
+                             // for a robot that needs no correction. MEASURED
+                             // 2026-09-17: gopiv turned 70.7 deg/s, tigez 71.3,
+                             // tovez 75.2 -- a 6.4% spread, because the rate
+                             // shifts by exactly the correction being measured.
+                             //
+                             // Harmless for the breakaway floor, which is a
+                             // WHEEL-speed threshold and identical for all
+                             // three. It is NOT harmless when comparing against
+                             // methods run at other speeds: this residual is
+                             // speed dependent (radio-robot-lib tigez.json says
+                             // so), and the robot furthest from 70 is the one
+                             // whose comparison is least safe. Say "commanded
+                             // 70 deg/s, 73.3 mm/s per wheel" in any writeup,
+                             // never "measured at 70 deg/s".
+                             //
                              // NOT SLOWER, and this is the single most important
                              // constant in the file. A pivot runs one wheel
                              // BACKWARDS, and this fleet does not break away in
