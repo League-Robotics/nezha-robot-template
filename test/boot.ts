@@ -113,7 +113,16 @@ if (control.deviceName() == "tovez") {
     // returning instantly without moving (5-6 control cycles, camera confirms
     // 0.3 deg) while whole revolutions still ran. calibrateTurn() in
     // test/calibratel.ts sets it at the top of every round for this reason.
-    diffDrive.setTrackWidth(11.42)
+    // CALIPER track width, 111.4 mm (Eric, 2026-09-17), replacing the compiled
+    // 114.2 this line used to carry -- see the same note in gopiv's block. tovez
+    // is genuinely the narrowest robot in the fleet, so on the old 114.2 anchor
+    // its slip had to exceed 1.0 to compensate, and a slip above 1 is REFUSED
+    // over the wire: validateCandidate() in config_commands.cpp allows only
+    // {0} u [0.5, 1.0], and the 1.028 below survived solely because the baked
+    // boot path skips validation. On the caliper width the honest value is
+    // 0.998, which is legal -- so tovez's geometry can now be loaded with a
+    // wire SET like every other robot's, instead of only by reflashing.
+    diffDrive.setTrackWidth(11.14)
     //
     // calt (test/calibratel.ts) could NOT have found this. It accepts at
     // CALT_TOL = 2 deg, and this robot's heading moves 1.5-11 deg per move on
@@ -127,7 +136,31 @@ if (control.deviceName() == "tovez") {
     // earlier comment here claimed it was inverted; that was wrong, and came
     // from a bad calibration run (see the capture log) that had set b to
     // 0.13 mm and stopped the robot turning at all.
-    diffDrive.setConfigValue(ConfigField.RotationalSlip, 1.028)
+    // MEASURED 2026-09-17 by calc on the alternating iron cross, five runs at
+    // 70 deg/s: b = 11.190, 11.163, 11.137, 11.127, 11.197 cm, mean 11.163,
+    // sd 0.031 (0.28%, standard error 0.12%). So slip = 11.14/11.163 = 0.998.
+    //
+    // This SUPERSEDES the 1.028 above, which on the old 11.42 anchor meant
+    // b = 11.109 -- 0.49% narrower. Both are camera-era numbers and the gap is
+    // small; calc wins because it does not assume a fixed centre of rotation,
+    // and tovez walks 1-1.5 cm per revolution (measured by tag 52 this session),
+    // which is exactly the assumption the six-revolution camera method rested on.
+    //
+    // THE CAVEAT, because it is not resolved: calc spins at ~73 mm/s per wheel
+    // and the camera turn calibrations that produced 1.028 and the JSON's 1.018
+    // ran at 60-188 mm/s. tigez's own config note records that this residual IS
+    // speed dependent, so these may not be quite the same quantity. The three
+    // values span 1%, which is the size of that effect, not a contradiction.
+    //
+    // 0.998 is remarkable on its own terms: tovez rotates as though it were
+    // almost exactly as wide as the calipers say, i.e. it barely scrubs, where
+    // gopiv needs 4.6% more wheel travel than geometry predicts and tigez 3.0%.
+    // Eric's explanation (2026-09-17) fits the ordering: tovez carries its
+    // wheels in the MIDDLE with a caster at each end, so each caster takes
+    // little weight; tigez has one caster on a short arm and is well balanced
+    // over the wheels; gopiv and vevov have a long lever to a single trailing
+    // caster, loading it hardest. More weight on a caster, more scrub.
+    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.998)
 }
 
 if (control.deviceName() == "gopiv") {
@@ -161,10 +194,20 @@ if (control.deviceName() == "gopiv") {
     // from CW; the within-pair splits were 6.29/2.72/3.40/1.75 deg and that IS
     // that error, doubled. The pair mean cancels it. Individual pivots scattered
     // across 161-186 deg before pairing and settling were enforced.
-    diffDrive.setTrackWidth(11.42)
+    // TRACK WIDTH IS THE CALIPER MEASUREMENT, 113.6 mm (Eric, 2026-09-17), not
+    // the compiled 114.2 default this line used to carry. A spin measures only
+    // the EFFECTIVE track b = trackWidth/slip, so any (trackWidth, slip) pair
+    // with the right ratio drives identically -- but only the caliper pair
+    // means anything physically, and only it can be compared against
+    // radio-robot-lib's config/robots/gopiv.json, which has always stored the
+    // caliper value. Keeping 11.42 here forced a different slip for the same
+    // robot in the two files, which read like a disagreement and was not one.
+    diffDrive.setTrackWidth(11.36)
     // REFINED 2026-09-17 by calc (Calibrate C, test/calibratec.ts) on the
-    // alternating iron cross: b = 11.879 cm, so slip = 11.42/11.879 = 0.9613,
-    // a 0.45% correction to the 0.957 calt gave.
+    // alternating iron cross: b = 11.879 cm, so slip = 11.36/11.879 = 0.9563,
+    // a 0.45% correction to the 0.957 calt gave. (On the old 11.42 anchor the
+    // same b was slip 0.9613; the ratio, and so the robot's behaviour, is
+    // unchanged by this rewrite.)
     //
     // Three runs at 70 deg/s: 11.869, 11.899, 11.870 -- sd 0.017 cm (0.14%).
     // Five earlier runs at 30 deg/s spread 11.628..11.835, sd 0.093 (0.79%),
@@ -181,7 +224,11 @@ if (control.deviceName() == "gopiv") {
     // whatever the centring -- and they now agree to 0.43%, against 1.5% when
     // calc ran too slowly. Independent methods converging is the evidence here;
     // neither number alone was.
-    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.9613)
+    // 0.956, not 0.9563: setConfigValue stores Math.round(value*1000), so three
+    // decimals is all the firmware can hold. That rounding moves b by 0.03%,
+    // against a 0.14% run-to-run spread -- below the noise, and written out at
+    // the value that will actually survive rather than one that silently won't.
+    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.956)
 }
 
 if (control.deviceName() == "vevov") {
@@ -339,8 +386,32 @@ if (control.deviceName() == "tigez") {
     // tigez, because the pivot's sensitivity to a lateral offset is
     // arcsin(d/r) and this robot's r is 9 cm against gopiv's 17. The same
     // half-centimetre of offset is twice the error.
-    diffDrive.setTrackWidth(11.42)
-    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.9805)
+    // CALIPER track width, 114.4 mm (Eric, 2026-09-17), replacing the compiled
+    // 114.2 anchor this line used to carry -- see gopiv's block for why the
+    // caliper pair is the one worth storing.
+    diffDrive.setTrackWidth(11.44)
+    // SUPERSEDES calt's 11.647, measured 2026-09-17 by calc on the alternating
+    // iron cross: three runs at 70 deg/s gave b = 11.808, 11.732, 11.792 cm,
+    // mean 11.777, sd 0.040 (0.34%). So slip = 11.44/11.777 = 0.971.
+    //
+    // BE HONEST ABOUT WHAT THIS SETTLES: it does not confirm either earlier
+    // number, it splits them. calt (above) said 11.647; radio-robot-lib's
+    // tigez.json, from camera-truthed pivots on 2026-09-03, implies 11.896.
+    // Those two disagree by 2.1%, and calc lands almost exactly halfway.
+    // Preferred anyway, because calc's estimator is the only one of the three
+    // that needs neither a fixed centre of rotation nor the lever arm: a RADIAL
+    // sector boundary puts a sensor's own consecutive crossings 45 deg apart
+    // whatever its radius or offset, and eight sectors sum to 360 so a centring
+    // error cancels over a whole revolution. That independence matters most on
+    // THIS robot, whose sensor bar is mounted ~7 deg skew (see above) and whose
+    // short 9 cm lever doubles calt's arcsin(d/r) sensitivity relative to gopiv.
+    //
+    // Scatter was the fleet's tightest per-channel: sd 1.7-3.7 deg against
+    // gopiv's 7.0-7.6 on the SAME cross, and tigez walked only ~0.25 cm per
+    // revolution against gopiv's ~0.5 and tovez's ~1.3. That ordering held on
+    // all three robots, which is what retired the earlier guess that the sd was
+    // the hand-cut tape's own sector irregularity -- it is pivot quality.
+    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.971)
 }
 
 //radio.setGroup(11)
