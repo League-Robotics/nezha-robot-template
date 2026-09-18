@@ -47,6 +47,24 @@
 //
 // ANCHORED, like calx/cala/calt: nothing in the TS API reads the geometry back,
 // so the run SETS it and reports a correction relative to what it set.
+// THESE TWO ARE NOT ANY ROBOT'S GEOMETRY, and must never be set to one. They
+// are an arbitrary REFERENCE the run writes before it starts, so that what it
+// reports is a correction to something known rather than to whatever the robot
+// happened to be carrying. The answer does not depend on their value: odometry
+// heading scales as 1/b_anchor, so the measured gap does too, and b_true =
+// b_anchor * slope cancels it exactly. Any anchor gives the same b.
+//
+// The compiled extension defaults are used simply because they are the one pair
+// every robot already agrees on. Per-robot measured geometry belongs in
+// radio-robot-lib config/robots/<name>.json and in boot.ts's per-robot blocks --
+// NOT here. A value that is right for one robot would be wrong for the rest, and
+// this file runs on all of them.
+//
+// THE ONE THING THAT DOES NOT CANCEL is the commanded wheel speed below, which
+// is derived from b_anchor -- see CC_SPIN.
+//
+// TRAP: a run leaves these in RAM and does not restore the robot's real values,
+// so a robot is mis-calibrated until its next reset or reflash.
 const CC_TRACK = 11.42       // cm, the anchor track width (compiled default)
 const CC_SLIP = 0.952        // compiled default; b_anchor = 11.42/0.952 = 12.0
 const CC_SECTOR = 45         // deg per sector -- the quantity being measured
@@ -56,51 +74,43 @@ const CC_SPIN = 70           // deg/s. One ~24 ms tick is 1.7 deg, so a single
                              //
                              // THIS IS A COMMANDED RATE AGAINST THE ANCHOR, not
                              // the rate the robot actually turns. The wheel
-                             // speed below is derived from b_anchor (11.996),
-                             // so every robot spins its wheels at the SAME
-                             // 73.3 mm/s -- but the yaw rate that produces is
-                             // CC_SPIN * b_anchor / b_true, which is only 70
-                             // for a robot that needs no correction. MEASURED
-                             // 2026-09-17: gopiv turned 70.7 deg/s, tigez 71.3,
-                             // tovez 75.2 -- a 6.4% spread, because the rate
-                             // shifts by exactly the correction being measured.
+                             // speed is derived from b_anchor, so every robot
+                             // spins its wheels at the same 73.3 mm/s -- but the
+                             // yaw rate that produces is CC_SPIN*b_anchor/b_true,
+                             // which equals 70 only for a robot needing no
+                             // correction. The rate shifts by exactly the
+                             // correction being measured, so it is per-robot and
+                             // is recorded per robot, as actual_spin_deg_s in
+                             // radio-robot-lib config/robots/<name>.json.
                              //
-                             // Harmless for the breakaway floor, which is a
-                             // WHEEL-speed threshold and identical for all
-                             // three. It is NOT harmless when comparing against
-                             // methods run at other speeds: this residual is
-                             // speed dependent (radio-robot-lib tigez.json says
-                             // so), and the robot furthest from 70 is the one
-                             // whose comparison is least safe. Say "commanded
-                             // 70 deg/s, 73.3 mm/s per wheel" in any writeup,
-                             // never "measured at 70 deg/s".
+                             // Harmless for the floor below, which is a
+                             // WHEEL-speed threshold and so identical for every
+                             // robot. NOT harmless when comparing against
+                             // methods run at other speeds, since that residual
+                             // is speed dependent. Say "commanded 70 deg/s,
+                             // 73.3 mm/s per wheel", never "measured at 70".
                              //
                              // NOT SLOWER, and this is the single most important
                              // constant in the file. A pivot runs one wheel
-                             // BACKWARDS, and this fleet does not break away in
-                             // reverse at low speed -- calibratet.ts already
-                             // says so. At the original 30 deg/s each wheel runs
-                             // at only 31.4 mm/s and the reversing (left) wheel
-                             // does not reliably turn at all: MEASURED gopiv
-                             // 2026-09-17, it sat frozen for a tick and managed
-                             // 72 encoder counts against the right wheel's 461
-                             // over the first 0.6 s. The robot then arcs about
-                             // the stalled wheel instead of pivoting, which
-                             // breaks the fixed-centre assumption this whole
-                             // method rests on.
+                             // BACKWARDS, and this drivetrain does not break away
+                             // in reverse at low speed -- calibratet.ts says so
+                             // independently. Below the floor the reversing wheel
+                             // barely turns, the robot arcs about it instead of
+                             // pivoting, and that breaks the fixed-centre
+                             // assumption the whole method rests on. The bias is
+                             // one-sided and averaging cannot find it.
                              //
-                             // Rate sweep, one 360 per rate, walk = tag
-                             // displacement over a full turn (a true pivot
-                             // returns it to the start):
-                             //   50 deg/s (52.3 mm/s)  walk 2.93 cm  R/L 3.70
-                             //   60       (62.8)       walk 0.45     R/L 2.31
-                             //   70       (73.3)       walk 0.40     R/L 1.39
-                             //   80       (83.7)       walk 1.12     R/L 1.32
-                             //   90       (94.2)       walk 0.57     R/L 1.86
-                             // The step is between 50 and 60; the differences
-                             // above 60 are within the scatter of single runs.
-                             // 70 sits clear of the threshold with the best
-                             // wheel balance measured.
+                             // WHERE 70 COMES FROM, AND HOW FAR IT IS TRUSTED:
+                             // a rate sweep on ONE robot -- gopiv, 2026-09-17,
+                             // recorded with its numbers in that robot's own
+                             // config/robots/gopiv.json. It put the step between
+                             // 50 and 60 deg/s and picked 70 as clear of it.
+                             // Every other robot inherits that number WITHOUT
+                             // its own sweep. Caster loading differs sharply
+                             // across these chassis and caster loading is what
+                             // the breakaway is about, so the floor may well move
+                             // between robots. Sweeping costs no reflash: cttune
+                             // sets the rate over the wire.
 const CC_EDGES = 10          // transitions to collect PER CHANNEL. The first
                              // gap of each channel is discarded (it starts
                              // wherever the robot was parked, mid-sector), so
