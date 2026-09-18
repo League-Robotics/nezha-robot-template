@@ -17,6 +17,7 @@
         "test/calibratej.ts",
         "test/calibratec.ts",
         "test/runhelp.ts",
+        "test/emitpack.ts",
         "test/drive.ts",
         "test/linetrack.ts",
         "test/boot.ts"

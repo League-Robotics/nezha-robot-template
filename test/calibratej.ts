@@ -236,8 +236,11 @@ function runCalibrateJ(trueCm: number) {
 
     const atStart = linetrack.lineBits()
     if (atStart != 0) {
-        diffDrive.emitLine("CALJ:fail not on clear white -- bar=" + caljBar(atStart)
-            + ". Back the robot up behind the start line.")
+        // Terminal outcomes are JSON too, so a consumer has ONE contract: a
+        // run ends in exactly one of calj.result or calj.fail.
+        epPush(epStr(epStr(epObj("calj.fail"), "why", "not on clear white"),
+            "bar", caljBar(atStart)) + "}")
+        epFlush()
         basic.showIcon(IconNames.No)
         return
     }
@@ -459,8 +462,9 @@ function runCalibrateJ(trueCm: number) {
     diffDrive.stop()
 
     if (phase != 4) {
-        diffDrive.emitLine("CALJ:fail " + (bailed.length > 0 ? bailed : "drive ended early")
-            + " in phase " + phase)
+        epPush(epNum(epStr(epObj("calj.fail"), "why",
+            bailed.length > 0 ? bailed : "drive ended early"), "phase", phase, 0) + "}")
+        epFlush()
         basic.showIcon(IconNames.No)
         return
     }
@@ -475,9 +479,14 @@ function runCalibrateJ(trueCm: number) {
     // wheel diameter of 778 mm, reported as though it were a calibration.
     if (measured < trueCm * (1 - CALJ_TOL_FRAC)
         || measured > trueCm * (1 + CALJ_TOL_FRAC)) {
-        diffDrive.emitLine("CALJ:fail measured " + lineRound(measured, 2)
-            + "cm is nowhere near true " + trueCm + "cm -- NOT reporting a calibration."
-            + " Start behind the start line, on clear white, inside the paper.")
+        // This guard exists because the same failure once reported a 778 mm
+        // wheel on gopiv as though it were a measurement.
+        let bad = epObj("calj.fail")
+        bad = epStr(bad, "why", "measured distance is nowhere near true")
+        bad = epNum(bad, "measured", measured, 2)
+        bad = epNum(bad, "true", trueCm, 2)
+        epPush(bad + "}")
+        epFlush()
         basic.showIcon(IconNames.No)
         return
     }
@@ -490,41 +499,49 @@ function runCalibrateJ(trueCm: number) {
     // Crossings per metre is the oscillation rate, independent of run length.
     const perM = measured > 0 ? crossings * 100 / measured : 0
 
-    diffDrive.emitLine("CALJ:start=" + lineRound(xA, 2) + "cm finish=" + lineRound(xB, 2)
-        + "cm measured=" + lineRound(measured, 2) + "cm true=" + trueCm
-        + "cm error=" + lineRound(measured - trueCm, 2) + "cm")
-    diffDrive.emitLine("CALJ:calib=" + lineRound(corrected, 4) + "mm/deg was " + CALJ_BASELINE
-        + "  diameter=" + lineRound(diameter, 2) + "mm")
-    diffDrive.emitLine("CALJ:osc rms=" + lineRound(rms, 2) + "cm mean=" + lineRound(meanAbs, 2)
-        + "cm max=" + lineRound(maxAbs, 2) + "cm crossings=" + crossings
-        + " (" + lineRound(perM, 1) + "/m) blind=" + blindTicks + "/" + nTicks
-        + "ticks acq=" + acqTicks + "ticks")
-    diffDrive.emitLine("CALJ:bias=" + lineRound(bias, 3) + "cm/s heading="
-        + lineRound(diffDrive.heading(), 2) + "deg")
-    // ONE MACHINE-READABLE LINE, for the robot console and anything else that
-    // parses a run rather than reading it. The lines above are laid out for a
-    // human and put several values on a line (`calib=... diameter=...`), which
-    // makes an anchored regex miss everything but the first. This repeats them
-    // as flat key=value pairs, space separated, no units glued to the numbers,
-    // stable order. Values are duplicated on purpose -- the human lines are not
-    // going away, and a parser should never have to read them.
+    // ---- report, as packed JSON Lines --------------------------------------
+    // Packed through epPush()/epFlush() (emitpack.ts) rather than one
+    // emitLine() per line: a RUN verb is a live motion obligation, so the
+    // transport applies no backpressure and silently drops what does not fit.
+    // calc lost the last three lines of its report every run until it was
+    // packed this way.
     //
-    // calib is THE ANSWER: millimetres of wheel travel per shaft degree.
-    // diameter is the same number expressed as a wheel, for sanity-checking by
-    // eye against a ruler. quality is what says whether to believe the run:
-    // rms and crossings are how hard the straddle controller was working, blind
-    // is how many ticks the stripe sat in the sensor's blind gap.
-    diffDrive.emitLine("CALJ:result calib=" + lineRound(corrected, 4)
-        + " diameter=" + lineRound(diameter, 2)
-        + " measured=" + lineRound(measured, 2)
-        + " true=" + trueCm
-        + " error=" + lineRound(measured - trueCm, 2)
-        + " rms=" + lineRound(rms, 2)
-        + " crossings=" + lineRound(perM, 1)
-        + " blind=" + blindTicks
-        + " ticks=" + nTicks
-        + " acq=" + acqTicks)
-    diffDrive.emitLine("CALJ:apply diffDrive.setWheelCalibration(" + lineRound(corrected, 4) + ")")
+    // calib is THE ANSWER, millimetres of wheel travel per shaft degree.
+    // diameter is the same number as a wheel, for checking against a ruler by
+    // eye -- a wrong run shows up there first (a bad start once produced a
+    // 778 mm wheel). The quality object is what says whether to believe it.
+    let r = epObj("calj.result")
+    r = epNum(r, "calib", corrected, 4)
+    r = epNum(r, "diameter", diameter, 2)
+    r = epNum(r, "measured", measured, 2)
+    r = epNum(r, "true", trueCm, 2)
+    r = epNum(r, "error", measured - trueCm, 2)
+    r = epNum(r, "was", CALJ_BASELINE, 4)
+    epPush(r + "}")
+
+    // QUALITY. rms and crossings are how hard the straddle controller was
+    // working; blind is how many ticks the stripe sat in the sensor's blind
+    // gap, where its position is unobservable; acq is how long it took to find
+    // the stripe at all. bias is the steady wheel differential needed to hold
+    // the line -- a direct readout of how mismatched the two wheels are.
+    let q = epObj("calj.quality")
+    q = epNum(q, "rms", rms, 2)
+    q = epNum(q, "mean", meanAbs, 2)
+    q = epNum(q, "max", maxAbs, 2)
+    q = epNum(q, "xpm", perM, 1)
+    q = epNum(q, "blind", blindTicks, 0)
+    q = epNum(q, "ticks", nTicks, 0)
+    q = epNum(q, "acq", acqTicks, 0)
+    q = epNum(q, "bias", bias, 3)
+    q = epNum(q, "heading", diffDrive.heading(), 2)
+    epPush(q + "}")
+
+    // Where the two triggers actually fired, for a run that looks wrong.
+    let w = epObj("calj.span")
+    w = epNum(w, "start", xA, 2)
+    w = epNum(w, "finish", xB, 2)
+    epPush(w + "}")
+    epFlush()
     basic.showIcon(IconNames.Yes)
 }
 
