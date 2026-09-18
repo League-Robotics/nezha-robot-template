@@ -4,10 +4,23 @@
 // LEFT. Write register 4, read one byte: bit i set when channel i sees the
 // line. One transaction gets all four channels.
 //
-// calibratex.ts and calibratea.ts both stop on a line, and this read is all
-// they need. The line-follow program and its `line`/`abort`/`sense` RUN verbs
-// were cut from the calibration image on 2026-09-13, which carries only what
-// calibration needs (see boot.ts).
+// Both surviving calibrations read this sensor and nothing else: calj straddles
+// a stripe edge with it, calc times sector crossings with it. The line-follow
+// program and its `line`/`abort`/`sense` RUN verbs were cut from the
+// calibration image on 2026-09-13, which carries only what calibration needs
+// (see boot.ts).
+
+// WHERE THE FOUR CHANNELS SIT, in cm from the robot's centre line, LEFT
+// POSITIVE, channel 0 first. This is sensor-bar geometry, so it lives with the
+// sensor -- it was previously CALL_LATERAL in calibratel.ts, which was a
+// calibration file that happened to define it first, and it outlived that file.
+//
+// The inner pair at +-0.6 and the outer at +-3.0 leave a 2.4 cm gap on each
+// side, which is wider than the 1.68 cm stripe: a stripe can therefore sit
+// entirely between two channels and read `....`, indistinguishable from seeing
+// nothing at all. calj calls that the blind gap and counts it.
+const BAR_LATERAL = [3.0, 0.6, -0.6, -3.0]
+
 namespace linetrack {
     export function lineBits(): number {
         pins.i2cWriteNumber(0x1a, 4, NumberFormat.Int8LE)

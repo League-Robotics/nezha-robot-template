@@ -27,7 +27,7 @@
 //
 // ---- WHERE THE EDGE IS, FROM FOUR BITS ----------------------------------
 //
-// The channels sit at CALL_LATERAL = +3.0, +0.6, -0.6, -3.0 cm (left positive,
+// The channels sit at BAR_LATERAL = +3.0, +0.6, -0.6, -3.0 cm (left positive,
 // channel 0 on the robot's LEFT -- linetrack.ts). The stripe is NARROW, 1.68 cm
 // measured, so it never covers more than two channels at once.
 //
@@ -47,7 +47,7 @@
 //     ...#   e = -2.16   far left of the line
 //     ....   BLIND -- see below
 //
-// Aiming for `..#.` means aiming for e = CALL_LATERAL[2] + W/2, not for zero;
+// Aiming for `..#.` means aiming for e = BAR_LATERAL[2] + W/2, not for zero;
 // that offset is CALJ_TARGET below.
 //
 // THE BLIND STATE is why the first version oscillated. `....` happens on BOTH
@@ -69,7 +69,8 @@
 // arc. It also MEASURES that mismatch: holding the line takes a steady
 // differential, and its mean is reported as `bias`.
 //
-// This file reuses lineRound(), runNumber() and CALL_LATERAL from calibratel.ts
+// This file reuses lineRound() and runNumber() from runhelp.ts, and
+// BAR_LATERAL from linetrack.ts
 // rather than redefining them -- PXT compiles every file into one scope, so a
 // second definition is a duplicate-identifier error, not a local copy.
 const CALJ_BASELINE = 0.7878  // mm/deg, motion_engine.h's compiled default. Set
@@ -212,7 +213,7 @@ function caljBar(bits: number): string {
 
 // Where the aim is: the edge position that leaves only channel 2 dark.
 function caljTarget(): number {
-    return CALL_LATERAL[2] + CALJ_STRIPE_W / 2
+    return BAR_LATERAL[2] + CALJ_STRIPE_W / 2
 }
 
 // Estimated stripe edge in the robot's frame, + to the left. Returns 999 when
@@ -221,7 +222,7 @@ function caljEdge(bits: number): number {
     let sum = 0
     let n = 0
     for (let i = 0; i < 4; i++) {
-        if ((bits & (1 << i)) != 0) { sum += CALL_LATERAL[i]; n++ }
+        if ((bits & (1 << i)) != 0) { sum += BAR_LATERAL[i]; n++ }
     }
     if (n == 0) return 999
     return sum / n + CALJ_STRIPE_W / 2

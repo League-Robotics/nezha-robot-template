@@ -458,9 +458,9 @@ diffDrive.emitLine(RADIO_ADDRESS.length == 2
 // seven registered names ever arrived. v1.20260913.1 makes a reply line wait
 // for room, so the list is complete again. If you ever pin an OLDER extension,
 // keep this image to seven RUN verbs or the later ones vanish from the list.
-diffDrive.emitLine("boot verbs: square circle calx cala call[:dir] linea[:dir]"
-    + " turn[:deg] calt[:turns] cald[:cm] calj[:cm] caljhome"
-    + " nudge[:l:r:ticks] sweep[:cm]")
+diffDrive.emitLine("boot verbs: calj[:cm] calc[:edges] caljhome[:cm]"
+    + " caltune calbtune calzeta wiretune bargray barref"
+    + " turn[:deg] nudge[:l:r:ticks] square circle")
 diffDrive.emitLine("boot buttons: A=pick program  B=run it")
 
 
@@ -492,27 +492,6 @@ const PROGRAM_PICTURES = [
         # . . . #
         # # # # #
         `),
-    images.createImage(`
-        # . . . #
-        . # . # .
-        . . # . .
-        . # . # .
-        # . . . #
-        `),
-    images.createImage(`
-        . . # . .
-        . . # . .
-        # # # # #
-        . . # . .
-        . . # . .
-        `),
-    images.createImage(`
-        . . # . .
-        . . # . .
-        . . # . .
-        . . . . .
-        # # # # #
-        `),
     // calibrate-j: the two lines of the course, joined by the stripe between
     // them -- the field as seen from above.
     images.createImage(`
@@ -522,17 +501,34 @@ const PROGRAM_PICTURES = [
         # . . . #
         # . . . #
         `),
-    // calibrate-t: a T, for the turn calibration that follows calibrate-j.
+    // calibrate-c: an X, for the alternating iron cross it spins on. (This
+    // picture belonged to calibrate-x, which was deleted with the other four
+    // calibrations on 2026-09-17; calibratec.ts's own header already named an X
+    // as its menu picture.)
     images.createImage(`
-        # # # # #
+        # . . . #
+        . # . # .
         . . # . .
-        . . # . .
-        . . # . .
-        . . # . .
+        . # . # .
+        # . . . #
         `)
 ]
-const PROGRAM_RUNS: (() => void)[] = [driveCircle, driveSquare, calibrateX, calibrateA, calibrateL, calibrateJ, calibrateT]
-const PROGRAM_NAMES = ["circle", "square", "calibrate-x", "calibrate-a", "calibrate-l", "calibrate-j", "calibrate-t"]
+// TWO CALIBRATIONS, and that is the whole point of this image.
+//
+// calj measures wheel travel (mm per shaft degree, so a wheel diameter) by
+// straddling a stripe edge between two lines a TAPE-MEASURED distance apart.
+// calc measures the effective track width b by spinning on an alternating iron
+// cross. Between them they pin the two constants odometry actually runs on, and
+// they are independent: neither uses the other's answer.
+//
+// calx, cala, call, calt and cald were deleted on 2026-09-17. Every one of them
+// measured something calj or calc now measures better, and several were
+// actively misleading -- calt's tolerance sat inside its own noise on a tail
+// dragger, and cala assumed a fixed centre of rotation that no robot in this
+// fleet holds. Keeping a worse method next to a better one invites someone to
+// run it.
+const PROGRAM_RUNS: (() => void)[] = [driveCircle, driveSquare, calibrateJ, calibrateC]
+const PROGRAM_NAMES = ["circle", "square", "calibrate-j", "calibrate-c"]
 
 // -1 is "nothing picked yet", so the first A press lands on the circle.
 let programIndex = -1
