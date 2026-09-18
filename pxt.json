@@ -13,6 +13,7 @@
         "README.md",
         "test/secrets.ts",
         "test/square.ts",
+        "test/tour.ts",
         "test/circle.ts",
         "test/calibratej.ts",
         "test/calibratec.ts",
