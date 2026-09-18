@@ -327,7 +327,32 @@ if (control.deviceName() == "vevov") {
     // 111.6/116.2 = 0.96 -- back inside config.proto's legal {0} u [0.5, 1.0],
     // which the old baked 1.1013 violated outright.
     diffDrive.setTrackWidth(11.16)
-    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.96)
+    // MEASURED 2026-09-17 by calc on the alternating iron cross: b = 11.516 cm,
+    // so slip = 11.16/11.516 = 0.969, a 0.94% correction to the 0.96 above.
+    // Fifteen single-revolution runs; the numbers and the caveats are in
+    // radio-robot-lib config/robots/vevov.json under geometry.calc_20260917.
+    //
+    // THE LEAST PRECISE RESULT IN THE FLEET, and the reason is worth knowing:
+    // sd 1.22% against gopiv's 0.14%, tovez's 0.28% and tigez's 0.34% on the
+    // SAME cross. Two hypotheses were tested and BOTH FAILED, so this is not
+    // yet explained --
+    //   - not the sensor. All four channels agree on the mean to 0.11 deg while
+    //     each carries 7.6-9.8 deg of within-run scatter. That is common mode:
+    //     a thresholding fault would make the channels disagree independently.
+    //     (vevov's learned line/background references do read a degenerate
+    //     9,9,9,9, but the channel agreement rules it out as the cause.)
+    //   - not centring. Recentring on the cross before every run made it very
+    //     slightly WORSE, 1.45% over 5 runs against 1.15% over the 10 that were
+    //     allowed to drift out to r = 4.5 cm.
+    // What is left is the pivot itself.
+    //
+    // DO NOT RAISE THE REVOLUTION COUNT TO AVERAGE IT DOWN. Tried, and it makes
+    // things worse, because vevov's walk is SYSTEMATIC rather than random: it
+    // creeps ~0.5 cm outward in the same direction every revolution. Three
+    // revolutions per run gave 11.602, 11.051 and 13.93 cm -- that last one a
+    // mean gap of 52.3 deg for a true 45, which is missed transitions, not
+    // scatter. Those three runs are discarded and are not in the 15.
+    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.969)
     // NOTE: the straddle lever arm (CALJ_LEVER, calibratej.ts) is deliberately
     // NOT set here. vevov's sensor bar is much shorter than gopiv's ~17cm but
     // has not been measured, and guessing it would put a wrong number into the
