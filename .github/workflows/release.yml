@@ -80,8 +80,15 @@ jobs:
       # build.sh seeds test/secrets.ts from test/secrets.example.ts. test/boot.ts
       # DOES read those constants now -- it calls setupWifi() with them -- so
       # what the example file carries is what the released image tries to join
-      # with. It carries an EMPTY password, and it must stay that way: a public
-      # release artifact would otherwise ship a recoverable one.
+      # with. BOTH FIELDS ARE EMPTY THERE and both must stay that way.
+      #
+      # The password, because a public release artifact would otherwise ship a
+      # recoverable one. The SSID, because a setupWifi() credential OUTRANKS the
+      # flash-backed credential store on a robot that has not stored one yet, so
+      # a name left in that file is the network every released robot in the
+      # fleet actually tries to join -- and it silently outvotes the console's
+      # Set WiFi button. That file said "Busboom Mesh" until 2026-09-19 and
+      # robots were doing exactly that.
       # BEFORE the build, not after: kProfile is a compile-time constant, so
       # the version has to be known while the C++ is still being compiled.
       - name: Determine version
@@ -215,11 +222,16 @@ jobs:
               echo "derives: channel 11 + n % 73, group 15 + n % 241 (radio-robot-lib"
               echo "\`docs/design/radio-addressing.md\`). Tune a relay with \`!N <name>\`."
               echo
-              echo "WiFi is compiled in but inert in this image: \`test/boot.ts\` reads its"
-              echo "credentials from \`test/secrets.ts\`, which is gitignored, and CI seeds"
-              echo "that from \`test/secrets.example.ts\` with an EMPTY password. A public"
-              echo "release artifact must never carry a recoverable one. To use WiFi, build"
-              echo "locally with your own \`test/secrets.ts\`."
+              echo "WiFi is compiled in but carries NO network in this image: CI seeds"
+              echo "\`test/secrets.ts\` from \`test/secrets.example.ts\`, where both the SSID"
+              echo "and the password are empty. A public release artifact must never carry"
+              echo "a recoverable password, and must never name a network for the whole"
+              echo "fleet to chase."
+              echo
+              echo "To put a robot on your WiFi, set a credential over the wire"
+              echo "(\`WIFICRED SET 0 <ssid> <password>\`) and then RESET the board -- the"
+              echo "credential is read once, at the first poll after boot. Or build locally"
+              echo "with your own \`test/secrets.ts\`."
           } > notes.md
 
           # --target: on a tag push the tag already exists and this is a no-op;
