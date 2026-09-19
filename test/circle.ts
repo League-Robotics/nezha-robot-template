@@ -17,20 +17,16 @@ const CIRCLE_RADIUS = 30
 const CIRCLE_SEGMENT = CIRCLE_RADIUS * 45 * Math.PI / 180
 
 function driveCircle() {
-    basic.showNumber(1, 0)
-    diffDrive.move(CIRCLE_SEGMENT, 45)
-    diffDrive.move(CIRCLE_SEGMENT, 45)
-    basic.showNumber(2, 0)
-    diffDrive.move(CIRCLE_SEGMENT, 45)
-    diffDrive.move(CIRCLE_SEGMENT, 45)
-    basic.showNumber(3, 0)
-    diffDrive.move(CIRCLE_SEGMENT, 45)
-    diffDrive.move(CIRCLE_SEGMENT, 45)
-    basic.showNumber(4, 0)
-    diffDrive.move(CIRCLE_SEGMENT, 45)
-    diffDrive.move(CIRCLE_SEGMENT, 45)
+    // Four quarters of two segments each, as a loop -- see driveSquare().
+    for (let q = 1; q <= 4; q++) {
+        basic.showNumber(q, 0)
+        if (!legMove(CIRCLE_SEGMENT, 45)) { programStopped("circle"); return }
+        if (!legMove(CIRCLE_SEGMENT, 45)) { programStopped("circle"); return }
+    }
     basic.clearScreen()
 }
 
-diffDrive.onRun("circle", function (arg) { driveCircle() })
+diffDrive.onRun("circle", function (arg) {
+    programBegin(); driveCircle(); programEnd()
+})
 diffDrive.runSignature("circle", "()")

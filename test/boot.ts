@@ -490,11 +490,15 @@ diffDrive.emitLine("boot buttons: A=pick program  B=run it")
 // Drawn as images rather than IconNames, which has neither a square nor a
 // circle in it.
 //
-// These are the ONLY A and B handlers in the build, and they have to be:
+// These are the ONLY A, B and A+B handlers in the build, and they have to be:
 // onButtonPressed registers against one (source, value) pair and the later
 // registration DELETES the earlier one (registerWithDal, core/codal.cpp), so a
 // button handler in square.ts or circle.ts would silently win or lose
 // depending on pxt.json order. Those files keep their RUN verbs instead.
+//
+// ALL THREE CANCEL A RUNNING PROGRAM, and none of them does anything else while
+// one is running: see runhelp.ts for why the cancel is a flag plus an immediate
+// stop rather than either on its own.
 const PROGRAM_PICTURES = [
     images.createImage(`
         . # # # .
@@ -560,7 +564,13 @@ const PROGRAM_NAMES = ["circle", "square", "cal-wheels", "cal-turn"]
 // -1 is "nothing picked yet", so the first A press lands on the circle.
 let programIndex = -1
 
+// What the B press asked for, picked up by the background runner below. -1 is
+// "nothing asked for". The handler sets this INSTEAD of running the program,
+// which is what keeps it free to cancel one.
+let programRequest = -1
+
 input.onButtonPressed(Button.A, function () {
+    if (programRunning()) { programCancel(); return }
     programIndex = (programIndex + 1) % PROGRAM_RUNS.length
     // interval 0: showImage otherwise holds the matrix for 400 ms, which makes
     // stepping through the list feel stuck.
@@ -569,7 +579,41 @@ input.onButtonPressed(Button.A, function () {
 })
 
 input.onButtonPressed(Button.B, function () {
+    if (programRunning()) { programCancel(); return }
     if (programIndex < 0) return
-    diffDrive.emitLine("run " + PROGRAM_NAMES[programIndex])
-    PROGRAM_RUNS[programIndex]()
+    // MARKED BUSY HERE, not in the runner. The runner picks the request up
+    // within 20 ms, and a press landing inside that window would otherwise see
+    // an idle robot: A would step the menu under a program about to start, and
+    // B would queue a second one. Claiming it in the handler closes the window
+    // -- a cancel arriving before the program starts is seen by its first loop
+    // check, which stops it immediately rather than never.
+    programBegin()
+    programRequest = programIndex
+})
+
+// A+B is its own event, so it needs its own handler to cancel. It does nothing
+// when idle: there is no third thing for it to start, and a student pressing
+// both to stop a robot should not get a program instead.
+input.onButtonPressed(Button.AB, function () {
+    if (programRunning()) programCancel()
+})
+
+// THE PROGRAM RUNNER. A fiber of its own, so a program never occupies a button
+// handler -- the whole reason B can now stop what B started. See runhelp.ts.
+//
+// The 20 ms poll is a fifth of the drive's own 24 ms control cadence, so the
+// delay between pressing B and the wheels moving is below what anyone can see,
+// and an idle robot spends nothing else on it.
+control.inBackground(function () {
+    while (true) {
+        if (programRequest >= 0) {
+            const i = programRequest
+            programRequest = -1
+            diffDrive.emitLine("run " + PROGRAM_NAMES[i])
+            // programBegin() was called by the B handler that made the request.
+            PROGRAM_RUNS[i]()
+            programEnd()
+        }
+        basic.pause(20)
+    }
 })

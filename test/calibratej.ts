@@ -360,6 +360,11 @@ function runCalibrateJ(trueCm: number, wheelMm: number) {
 
     diffDrive.setWheelSpeeds(CALJ_SPEED, CALJ_SPEED)
     while (diffDrive.driveTick()) {
+        // A BUTTON STOPS IT, checked before anything this tick is measured: a
+        // cancelled run must not contribute a sample, arm the finish or leave
+        // `bailed` empty, which would report as "drive ended early" and read
+        // like a fault. runhelp.ts has already stopped the wheels.
+        if (progCancelled()) { bailed = "stopped by a button press"; break }
         const x = diffDrive.poseX()
         const bits = linetrack.lineBits()
 
@@ -726,6 +731,14 @@ function caljHome(minCm: number) {
 
     diffDrive.setWheelSpeeds(-CALJ_BACK_SPEED, -CALJ_BACK_SPEED)
     while (diffDrive.driveTick()) {
+        // The return leg stops on a button too. It runs after the measurement
+        // is already on the wire, so abandoning it costs the reposition and
+        // nothing else -- exactly what the caller's comment promises.
+        if (progCancelled()) {
+            diffDrive.stop()
+            diffDrive.emitLine("CALWHEELS:home stopped by a button press")
+            return
+        }
         const x = Math.abs(diffDrive.poseX())
         const bits = linetrack.lineBits()
 
@@ -886,6 +899,8 @@ function caljTuneReport() {
 // wheels nobody has measured does the right thing without a second argument.
 // Pass a diameter only to re-check a wheel you already trust.
 diffDrive.onRun("calwheels", function (arg) {
+    programBegin()
     runCalibrateJ(runNumber(0, CALJ_TRUE_CM), runNumber(1, 0))
+    programEnd()
 })
 diffDrive.runSignature("calwheels", "(cm:number=90.5, wheel:number=0)")

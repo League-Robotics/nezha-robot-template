@@ -210,7 +210,13 @@ function runCalibrateC(edgesWanted: number) {
         + " wheel=" + lineRound(wheel, 2) + "cm/s")
 
     diffDrive.setWheelSpeeds(-wheel, wheel)
+    let cancelled = false
     while (diffDrive.driveTick()) {
+        // A BUTTON STOPS THE SPIN. Recorded rather than just broken out of,
+        // because the edges collected so far would otherwise fall straight into
+        // the arithmetic below and a half-finished spin would report a track
+        // width as though it had been measured.
+        if (progCancelled()) { cancelled = true; break }
         const h = diffDrive.heading()
         const bits = linetrack.lineBits()
         if (bits != last) {
@@ -244,6 +250,17 @@ function runCalibrateC(edgesWanted: number) {
         diffDrive.setWheelSpeeds(-wheel, wheel)
     }
     diffDrive.stop()
+
+    if (cancelled) {
+        // RESTORE FIRST, then report -- the same order the failure path below
+        // uses, and for the same reason. The spin overwrote trackWidth and
+        // rotational_slip with the anchor before it started, and a student who
+        // just pressed a button to stop the robot is owed it back the way it
+        // was rather than left on the anchor.
+        restoreGeometry()
+        programStopped("calturn")
+        return
+    }
 
     // ---- report, as packed JSON Lines --------------------------------------
     // Every line here goes through epPush()/epFlush() (emitpack.ts), which
@@ -398,5 +415,9 @@ function calibrateC() {
     runCalibrateC(CC_EDGES)
 }
 
-diffDrive.onRun("calturn", function (arg) { runCalibrateC(runNumber(0, CC_EDGES)) })
+diffDrive.onRun("calturn", function (arg) {
+    programBegin()
+    runCalibrateC(runNumber(0, CC_EDGES))
+    programEnd()
+})
 diffDrive.runSignature("calturn", "(edges:number=10)")
