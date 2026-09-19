@@ -3,10 +3,16 @@
 # flashed from anywhere without a local toolchain.
 #
 # WHAT THIS IMAGE IS: the CALIBRATION image for the fleet -- the hex carrying
-# the calx/cala routines students run to measure a robot's wheel diameter and
-# effective track width. It is deliberately NOT robot-specific: one image runs
-# on any Nezha board, and the numbers it reports are what get written back into
-# that robot's own config.
+# the calwheels/calturn routines students run to measure a robot's wheel travel
+# and effective track width. It is deliberately NOT robot-specific: one image
+# runs on any Nezha board, and the numbers it reports are what get written back
+# into that robot's own config.
+#
+# The verb names have now been renamed twice (calx/cala, then calj/calc, now
+# calwheels/calturn). They are quoted in the RELEASE NOTES below, which is what
+# a student reads to know what to run -- rename them here in the same commit
+# that renames them in test/, or a release ships instructions for verbs that
+# no longer exist.
 #
 # So the build stamps `calibration-<version>` into the extension's kProfile
 # (scripts/bake-profile.sh), and every released board answers the wire `ID`
@@ -185,8 +191,8 @@ jobs:
           EXT="$(node -e 'process.stdout.write(require("./pxt.json").dependencies["nezha-diffdrive"])')"
           {
               echo "The **calibration image** — micro:bit **V2** firmware carrying the"
-              echo "\`calx\` and \`cala\` routines for measuring a robot's wheel diameter"
-              echo "and effective track width. One image runs on any Nezha board."
+              echo "\`calwheels\` and \`calturn\` routines for measuring a robot's wheel"
+              echo "travel and effective track width. One image runs on any Nezha board."
               echo
               echo "To flash: download \`$HEX\`, plug the micro:bit in over USB, and"
               echo "drag the file onto the \`MICROBIT\` drive."
