@@ -551,6 +551,14 @@ function runCalibrateJ(trueCm: number) {
     epPush(w + "}")
     epFlush()
     basic.showIcon(IconNames.Yes)
+    // Drive home on the reverse PID, so the next run needs no hands on the
+    // robot. Called AFTER epFlush(): the measurement is already on the wire, so
+    // a return that fails costs the reposition, never the result.
+    //
+    // trueCm, not the documented 0: the course length arms caljHome()'s
+    // mid-course-line guard, which is harmless on a field whose ends are the
+    // only full lines and is the whole point on one where they are not.
+    caljHome(trueCm)
 }
 
 // Drive back to the start, FOLLOWING THE LINE IN REVERSE, so a retune can run
