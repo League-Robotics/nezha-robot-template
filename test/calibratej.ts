@@ -156,8 +156,35 @@ const CALJ_PHASE2_MAX = 10    // cm the outer channels may stay dark after the
                               // longer means the robot is driving ALONG a line
                               // rather than across it (38.7cm, same run).
 const CALJ_TOL_FRAC = 0.1     // fraction of trueCm the measurement may differ by
-                              // before it is refused. Was 0.25, which let a
-                              // 68.25cm "90.5cm" run report 1.0446 mm/deg.
+                              // before it is refused -- ONLY when the caller
+                              // declared the wheel (`wheel` > 0). Was 0.25,
+                              // which let a 68.25cm "90.5cm" run report 1.0446
+                              // mm/deg.
+                              //
+                              // THIS BOUND CANNOT BE THE DEFAULT, because it
+                              // assumes the very number this verb measures. See
+                              // CALJ_DIA_MIN below.
+
+// WHAT A RUN MAY CONCLUDE WHEN THE WHEEL IS UNKNOWN.
+//
+// calwheels measures wheel travel, so it must not presuppose it. Every
+// distance in this file is ODOMETRY cm -- encoder degrees times the mm/deg the
+// run was started with -- and the whole point of the run is that that number is
+// the wrong one. Comparing odometry cm against the TAPE-MEASURED course and
+// refusing a disagreement is therefore circular: the disagreement IS the
+// measurement. A robot whose wheels are 20% smaller than stock reports 20%
+// further than the tape says and was refused for being right (Eric, 2026-09-19,
+// after a wheel swap: "you can't measure the distance if you don't know how big
+// your wheels are").
+//
+// So when the wheel is not declared, the bounds come from what a wheel can
+// PHYSICALLY be on this chassis, and they are checked against the ANSWER rather
+// than against the premise. That still catches the failure the tolerance guard
+// was written for -- gopiv 2026-09-16 took the finish line for the start, read
+// 10.5cm of a 90.5cm course and reported a 778 mm wheel -- because 778 mm is
+// not a wheel that fits a Nezha.
+const CALJ_DIA_MIN = 40       // mm. Smallest wheel that clears the chassis.
+const CALJ_DIA_MAX = 120      // mm. Stock is ~90 mm (0.7878 mm/deg).
 const CALJ_HUNT_CM = 25       // cm to find the start line before giving up
 const CALJ_EXTRA_CM = 25      // cm of slack past the expected finish
 const CALJ_MAX_SECS = 60      // s for the whole run; a stalled robot stops its
@@ -236,10 +263,43 @@ function caljEdge(bits: number): number {
     return sum / n + CALJ_STRIPE_W / 2
 }
 
-function runCalibrateJ(trueCm: number) {
-    diffDrive.setWheelCalibration(CALJ_BASELINE)
-    diffDrive.emitLine("CALWHEELS:begin true=" + trueCm + "cm baseline=" + CALJ_BASELINE
-        + "mm/deg speed=" + CALJ_SPEED + " kp=" + CALJ_KP
+// mm of rim travel per shaft degree, for a wheel `diaMm` across.
+function caljCalibOf(diaMm: number): number {
+    return Math.PI * diaMm / 360
+}
+
+// `wheelMm` is the wheel diameter the CALLER believes, or 0 for "unknown" --
+// the default, and the honest answer most of the time, since a robot that
+// needed calibrating is a robot whose wheel is in question.
+//
+//   wheel > 0  the run is scaled by that wheel and the result is cross-checked
+//              against it to within CALJ_TOL_FRAC. Use it to RE-check a robot
+//              you have already calibrated: a disagreement then means the line
+//              detection went wrong, because the scale was not in doubt.
+//   wheel = 0  the run is scaled by CALJ_BASELINE so the arithmetic has some
+//              origin, but NOTHING is concluded from the agreement between that
+//              scale and the tape. The bounds come from CALJ_DIA_MIN/MAX
+//              instead, which is a fact about the chassis rather than about the
+//              measurement.
+function runCalibrateJ(trueCm: number, wheelMm: number) {
+    const known = wheelMm > 0
+    // The scale the run is MEASURED IN. Not a claim about the wheel when
+    // unknown -- just the unit the encoder degrees get multiplied by, divided
+    // back out at the end.
+    const runCalib = known ? caljCalibOf(wheelMm) : CALJ_BASELINE
+
+    // Bounds on what this run may REPORT, as a fraction of trueCm. Odometry cm
+    // over tape cm is exactly runCalib / (the wheel's true mm/deg), so a bound
+    // on the wheel is a bound on the reading -- and the bigger the wheel, the
+    // SHORTER the course reads.
+    const spanLo = known ? 1 - CALJ_TOL_FRAC : runCalib / caljCalibOf(CALJ_DIA_MAX)
+    const spanHi = known ? 1 + CALJ_TOL_FRAC : runCalib / caljCalibOf(CALJ_DIA_MIN)
+
+    diffDrive.setWheelCalibration(runCalib)
+    diffDrive.emitLine("CALWHEELS:begin true=" + trueCm + "cm scale=" + lineRound(runCalib, 4)
+        + "mm/deg wheel=" + (known ? wheelMm + "mm" : "unknown")
+        + " span=" + lineRound(trueCm * spanLo, 1) + ".." + lineRound(trueCm * spanHi, 1) + "cm"
+        + " speed=" + CALJ_SPEED + " kp=" + CALJ_KP
         + " dead=" + CALJ_DEADBAND + " aim=" + lineRound(caljTarget(), 2) + "cm")
 
     const atStart = linetrack.lineBits()
@@ -309,12 +369,21 @@ function runCalibrateJ(trueCm: number) {
             // and taken as the finish it measures half the course -- which the
             // tolerance guard below then REFUSES, so the run is lost either way.
             //
-            // The arming threshold is the tolerance guard's own bound. Anything
-            // shorter than (1 - CALJ_TOL_FRAC) * trueCm is thrown away as a
-            // measurement, so accepting it as the finish can only ever turn a
-            // good run into a refused one. A field with no mid-line never
-            // reaches this test before its real finish, so nothing changes there.
-            if (bits == CALJ_ALL && x - xA >= trueCm * (1 - CALJ_TOL_FRAC)) {
+            // The arming threshold is the refusal guard's own bound. Anything
+            // shorter than trueCm * spanLo is thrown away as a measurement, so
+            // accepting it as the finish can only ever turn a good run into a
+            // refused one. A field with no mid-line never reaches this test
+            // before its real finish, so nothing changes there.
+            //
+            // spanLo, NOT (1 - CALJ_TOL_FRAC): with the wheel unknown the
+            // threshold has to admit any course a plausible wheel could report,
+            // and a wheel LARGER than the scale reports the course short. At
+            // stock-relative 1.0 the old fixed threshold refused to arm at all
+            // for anything over ~100 mm, so a big-wheeled robot drove the
+            // course, crossed the finish, and ran on until the budget bailed it
+            // out -- a failure that looked like a line-detection problem and was
+            // not.
+            if (bits == CALJ_ALL && x - xA >= trueCm * spanLo) {
                 xB = (lastX + x) / 2
                 phase = 4
                 break
@@ -457,7 +526,13 @@ function runCalibrateJ(trueCm: number) {
         lastX = x
         // Budget the COURSE, not the whole drive: `x` counts from where the
         // robot started, which includes the approach to the start line.
-        if (phase > 1 && x - xA >= trueCm + CALJ_EXTRA_CM) {
+        // spanHi, for the same reason the arming threshold uses spanLo: a wheel
+        // SMALLER than the scale reports the course long, and a budget of
+        // trueCm + slack cut those runs off before the finish. The physical
+        // backstop is not this number anyway -- it is the paper. Past the end of
+        // the course the bar reads all four channels on bare floor, which either
+        // arms the finish or trips the CALJ_MID_MAX dark bail within ~7.6cm.
+        if (phase > 1 && x - xA >= trueCm * spanHi + CALJ_EXTRA_CM) {
             bailed = "ran " + lineRound(x - xA, 1) + "cm past the start line"
                 + " without finding the finish"
             break
@@ -479,28 +554,45 @@ function runCalibrateJ(trueCm: number) {
 
     const measured = xB - xA
 
-    // REFUSE a nonsense distance. Two ways this run can look successful and be
+    // THE ANSWER FIRST, then judge the answer. The old order judged the
+    // premise: it compared odometry cm against the tape and refused a
+    // disagreement, which is the one comparison this verb exists to make.
+    const corrected = measured > 0 ? runCalib * trueCm / measured : 0
+    const diameter = corrected * 360 / Math.PI
+
+    // REFUSE A WHEEL THAT CANNOT EXIST. Two ways a run looks successful and is
     // meaningless: started mid-course, so the FINISH line was taken for the
     // start; or ran off the end of the paper, where bare dark floor reads as all
     // four channels and counts as a line. Both happened on gopiv 2026-09-16 and
     // between them produced "90.5cm true, 10.5cm measured" -> 6.79 mm/deg, a
-    // wheel diameter of 778 mm, reported as though it were a calibration.
-    if (measured < trueCm * (1 - CALJ_TOL_FRAC)
-        || measured > trueCm * (1 + CALJ_TOL_FRAC)) {
-        // This guard exists because the same failure once reported a 778 mm
-        // wheel on gopiv as though it were a measurement.
+    // wheel 778 mm across, reported as though it were a calibration.
+    //
+    // 778 mm is still refused here, and for a reason that does not depend on
+    // knowing the wheel: no 778 mm wheel fits a Nezha. What is no longer
+    // refused is a robot that is simply not wearing the wheel the firmware
+    // shipped with.
+    if (measured < trueCm * spanLo || measured > trueCm * spanHi) {
         let bad = epObj("calwheels.fail")
-        bad = epStr(bad, "why", "measured distance is nowhere near true")
+        // The `why` says which bound was applied, because the two mean
+        // different things to whoever reads it: one is a claim about the
+        // chassis, the other a cross-check the caller asked for.
+        bad = epStr(bad, "why", known
+            ? "measured distance is nowhere near the declared wheel"
+            : "no wheel that fits this chassis could have driven that")
         bad = epNum(bad, "measured", measured, 2)
         bad = epNum(bad, "true", trueCm, 2)
+        // The implied wheel is the most legible form of the failure: "the start
+        // and finish you gave me imply a 778 mm wheel" tells a student what went
+        // wrong on the FIELD, which is where it went wrong.
+        bad = epNum(bad, "implied", diameter, 2)
+        bad = epNum(bad, "lo", trueCm * spanLo, 2)
+        bad = epNum(bad, "hi", trueCm * spanHi, 2)
+        bad = epStr(bad, "wheel", known ? "" + wheelMm : "unknown")
         epPush(bad + "}")
         epFlush()
         basic.showIcon(IconNames.No)
         return
     }
-
-    const corrected = CALJ_BASELINE * trueCm / measured
-    const diameter = corrected * 360 / Math.PI
     const meanAbs = nTicks > 0 ? sumAbs / nTicks : 0
     const rms = nTicks > 0 ? Math.sqrt(sumSq / nTicks) : 0
     const bias = nTicks > 0 ? sumDiff / nTicks : 0
@@ -524,7 +616,11 @@ function runCalibrateJ(trueCm: number) {
     r = epNum(r, "measured", measured, 2)
     r = epNum(r, "true", trueCm, 2)
     r = epNum(r, "error", measured - trueCm, 2)
-    r = epNum(r, "was", CALJ_BASELINE, 4)
+    // `was` is the scale this run was MEASURED IN, which is CALJ_BASELINE only
+    // when the caller declared no wheel. A consumer computing calib/was gets the
+    // correction factor either way.
+    r = epNum(r, "was", runCalib, 4)
+    r = epStr(r, "wheel", known ? "" + wheelMm : "unknown")
     epPush(r + "}")
 
     // QUALITY. rms and crossings are how hard the straddle controller was
@@ -700,9 +796,11 @@ function caljHome(minCm: number) {
     basic.showIcon(IconNames.Yes)
 }
 
-// The menu entry: run the course with the surveyed distance.
+// The menu entry: run the course with the surveyed distance, and with the wheel
+// UNKNOWN -- a button on the robot cannot declare one, and the button is what a
+// student presses on a robot nobody has measured.
 function calibrateJ() {
-    runCalibrateJ(CALJ_TRUE_CM)
+    runCalibrateJ(CALJ_TRUE_CM, 0)
 }
 
 // ---- RUNTIME TUNING ------------------------------------------------------
@@ -751,5 +849,10 @@ function caljTuneReport() {
 //
 // caljTuneReport() is kept and still called from the start of a run, so the
 // gains a run used are always in its own log.
-diffDrive.onRun("calwheels", function (arg) { runCalibrateJ(runNumber(0, CALJ_TRUE_CM)) })
-diffDrive.runSignature("calwheels", "(cm:number=90.5)")
+// wheel defaults to 0 -- UNKNOWN -- so `RUN calwheels 90.5` on a robot whose
+// wheels nobody has measured does the right thing without a second argument.
+// Pass a diameter only to re-check a wheel you already trust.
+diffDrive.onRun("calwheels", function (arg) {
+    runCalibrateJ(runNumber(0, CALJ_TRUE_CM), runNumber(1, 0))
+})
+diffDrive.runSignature("calwheels", "(cm:number=90.5, wheel:number=0)")
