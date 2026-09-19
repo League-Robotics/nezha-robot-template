@@ -467,14 +467,20 @@ diffDrive.emitLine(RADIO_ADDRESS.length == 2
 // seven registered names ever arrived. v1.20260913.1 makes a reply line wait
 // for room, so the list is complete again. If you ever pin an OLDER extension,
 // keep this image to seven RUN verbs or the later ones vanish from the list.
-// FOUR VERBS, and the list is the spec. calj measures distance on the
-// eye-shaped field, calc measures rotation on the iron cross, square and circle
-// are the demo drives. Everything else was unregistered 2026-09-18 so the
-// console has exactly two calibrations to present and no near-misses beside
-// them. Plain driving now goes through the console's own MOVE_X rather than a
-// `turn`/`nudge` RUN verb, which is why those are gone too.
+// SEVEN VERBS, and the list is the spec. Two calibrations -- calwheels measures
+// distance on the eye-shaped field, calturn measures rotation on the iron cross
+// -- square and circle as the demo drives, calshow/calclear for the stored
+// calibration (calstore.ts), and reboot (provision.ts). Everything else was
+// unregistered 2026-09-18 so the console has exactly two calibrations to
+// present and no near-misses beside them. Plain driving goes through the
+// console's own MOVE_X rather than a `turn`/`nudge` RUN verb.
+//
+// Seven is the ceiling the note above describes, and it binds only on an
+// extension older than v1.20260913.1. This image pins v1.20260914.1, which
+// makes a reply line wait for room -- but an eighth verb is the point at which
+// pinning an older extension starts silently truncating FUNCS, so weigh one.
 diffDrive.emitLine("boot verbs: calwheels[:cm[:wheel]] calturn[:edges] square circle"
-    + " calshow calclear")
+    + " calshow calclear reboot")
 // What this robot is running, and whether it came from flash or the compiler.
 // At boot, so the console's calibrate menu can render on connect instead of
 // after a round trip.
