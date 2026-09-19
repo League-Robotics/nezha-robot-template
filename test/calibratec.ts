@@ -350,14 +350,30 @@ function runCalibrateC(edgesWanted: number) {
     q = epNum(q, "spin", CC_SPIN, 0)
     q = epNum(q, "wheel", wheel, 2)
     epPush(q + "}")
-    // RESTORE BEFORE THE FINAL FLUSH, so the robot is already correct by the
-    // time a consumer sees .result and acts on it. Without this, calc left the
-    // anchor in the robot and the only way back was a reflash -- `SET
-    // rotational_slip` cannot undo it, because trackwidth is not a settable
-    // config field over the wire.
-    restoreGeometry()
-    epPush(epNum(epObj("calturn.restored"), "tw", bootTrackWidth(), 2)
-        + ",\"slip\":" + lineRound(bootSlip(), 4) + "}")
+    // KEEP IT, BEFORE THE FINAL FLUSH, so the robot is already correct by the
+    // time a consumer sees .result and acts on it.
+    //
+    // This used to be restoreGeometry() -- put back exactly what boot applied
+    // and throw the measurement away. That was right when nothing survived a
+    // power cycle: the anchor had to come out of the robot, and the measured
+    // slip had nowhere to live but the wire. Now it has somewhere (calstore.ts),
+    // so the run APPLIES its own answer and stores it, which is what a student
+    // pressing B on the button menu is entitled to expect.
+    //
+    // The track width is not measured here and is passed through unchanged --
+    // calturn measures the effective b, and the caliper tw is what divides into
+    // it. Storing the pair together keeps geometry.ts's record, the engine and
+    // flash saying the same thing.
+    const slipMeasured = bootTrackWidth() / bTrue
+    calSaveTurn(bootTrackWidth(), slipMeasured)
+    // Still `calturn.restored`, and still true: it names the geometry the robot
+    // is running as it finishes. `stored` says the pair also survives a power
+    // cycle now, which `restored` on its own never promised.
+    let rest = epObj("calturn.restored")
+    rest = epNum(rest, "tw", bootTrackWidth(), 2)
+    rest = epNum(rest, "slip", bootSlip(), 4)
+    rest = epNum(rest, "stored", 1, 0)
+    epPush(rest + "}")
     epFlush()
     basic.showIcon(IconNames.Yes)
 }

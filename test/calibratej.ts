@@ -631,6 +631,15 @@ function runCalibrateJ(trueCm: number, wheelMm: number) {
     // diameter is the same number as a wheel, for checking against a ruler by
     // eye -- a wrong run shows up there first (a bad start once produced a
     // 778 mm wheel). The quality object is what says whether to believe it.
+    // APPLY IT AND WRITE IT DOWN, before the report rather than after: a
+    // student who ran this from the button menu has no wire session to read the
+    // report on, so the store IS the result as far as they are concerned. See
+    // calstore.ts for what survives a power cycle and what does not.
+    //
+    // This also puts the robot on its own calibration for the drive home below,
+    // which is the first thing it does with it.
+    calSaveWheel(corrected)
+
     let r = epObj("calwheels.result")
     r = epNum(r, "calib", corrected, 4)
     r = epNum(r, "diameter", diameter, 2)
@@ -642,6 +651,9 @@ function runCalibrateJ(trueCm: number, wheelMm: number) {
     // correction factor either way.
     r = epNum(r, "was", runCalib, 4)
     r = epStr(r, "wheel", known ? "" + wheelMm : "unknown")
+    // Stored, so a consumer knows the robot is now RUNNING this number rather
+    // than merely having reported it.
+    r = epNum(r, "stored", 1, 0)
     epPush(r + "}")
 
     // QUALITY. rms and crossings are how hard the straddle controller was

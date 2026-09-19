@@ -7,7 +7,8 @@
         "core": "*",
         "nezha-diffdrive": "github:League-Robotics/pxt-nezha-diffdrive#v1.20260914.1",
         "pxt-PlanetX": "github:elecfreaks/pxt-PlanetX#v1.6.7",
-        "microphone": "*"
+        "microphone": "*",
+        "settings": "*"
     },
     "files": [
         "README.md",
@@ -17,6 +18,7 @@
         "test/calibratej.ts",
         "test/calibratec.ts",
         "test/geometry.ts",
+        "test/calstore.ts",
         "test/runhelp.ts",
         "test/emitpack.ts",
         "test/linetrack.ts",

@@ -445,6 +445,15 @@ if (control.deviceName() == "tigez") {
 
 diffDrive.setupWifi(WIFI_SSID, WIFI_PASSWORD)
 
+// A STORED CALIBRATION BEATS THE COMPILED ONE, and this is the line that makes
+// that true. It runs AFTER every per-robot block above: those are what the
+// fleet measured at some point in the past, this is what the robot in your
+// hands measured itself, most recently, on the wheels it is wearing now.
+//
+// A robot with nothing stored is untouched and boots exactly as it did before
+// calstore.ts existed.
+calApplyStored()
+
 // One line per thing a bench operator would otherwise have to read the source
 // for, so `mbdeploy connect` shows it at boot.
 diffDrive.emitLine("boot tests ready")
@@ -464,7 +473,12 @@ diffDrive.emitLine(RADIO_ADDRESS.length == 2
 // console has exactly two calibrations to present and no near-misses beside
 // them. Plain driving now goes through the console's own MOVE_X rather than a
 // `turn`/`nudge` RUN verb, which is why those are gone too.
-diffDrive.emitLine("boot verbs: calwheels[:cm] calturn[:edges] square circle")
+diffDrive.emitLine("boot verbs: calwheels[:cm[:wheel]] calturn[:edges] square circle"
+    + " calshow calclear")
+// What this robot is running, and whether it came from flash or the compiler.
+// At boot, so the console's calibrate menu can render on connect instead of
+// after a round trip.
+diffDrive.emitLine(calBootLine())
 diffDrive.emitLine("boot buttons: A=pick program  B=run it")
 
 
@@ -496,25 +510,34 @@ const PROGRAM_PICTURES = [
         # . . . #
         # # # # #
         `),
-    // calibrate-j: the two lines of the course, joined by the stripe between
-    // them -- the field as seen from above.
+    // cal-wheels: a double-headed arrow, out and back along the course. The
+    // picture says what the robot will DO when B is pressed -- drive away and
+    // drive back -- which is the thing a student needs to know before it moves.
+    //
+    // It replaced a plan view of the field (two verticals joined by a
+    // crossbar). That was a good drawing of the apparatus and a poor drawing of
+    // the action, and at five by five it also read as a capital I.
     images.createImage(`
-        # . . . #
-        # . . . #
-        # # # # #
-        # . . . #
-        # . . . #
-        `),
-    // calibrate-c: an X, for the alternating iron cross it spins on. (This
-    // picture belonged to calibrate-x, which was deleted with the other four
-    // calibrations on 2026-09-17; calibratec.ts's own header already named an X
-    // as its menu picture.)
-    images.createImage(`
-        # . . . #
-        . # . # .
         . . # . .
-        . # . # .
+        . # # # .
+        . . # . .
+        . # # # .
+        . . # . .
+        `),
+    // cal-turn: an open circle with an arrowhead, for going around. The ring
+    // breaks at the top right and the corner beside the break is thickened into
+    // a head, which is as much arrow as five by five will hold.
+    //
+    // It replaced an X, drawn for the iron cross the robot spins on -- the
+    // apparatus again rather than the action, and indistinguishable at a glance
+    // from a failure cross, which is what this same matrix shows when the run
+    // does not work.
+    images.createImage(`
+        . # # . #
+        # . . # #
         # . . . #
+        # . . . #
+        . # # # .
         `)
 ]
 // TWO CALIBRATIONS, and that is the whole point of this image.
