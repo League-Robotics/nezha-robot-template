@@ -122,7 +122,7 @@ if (control.deviceName() == "tovez") {
     // boot path skips validation. On the caliper width the honest value is
     // 0.998, which is legal -- so tovez's geometry can now be loaded with a
     // wire SET like every other robot's, instead of only by reflashing.
-    diffDrive.setTrackWidth(11.14)
+    applyGeometry(11.14, 0.998)   // records the pair -- see geometry.ts
     //
     // calt (test/calibratel.ts) could NOT have found this. It accepts at
     // CALT_TOL = 2 deg, and this robot's heading moves 1.5-11 deg per move on
@@ -160,7 +160,7 @@ if (control.deviceName() == "tovez") {
     // little weight; tigez has one caster on a short arm and is well balanced
     // over the wheels; gopiv and vevov have a long lever to a single trailing
     // caster, loading it hardest. More weight on a caster, more scrub.
-    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.998)
+    // (slip 0.998 applied by applyGeometry above)
 }
 
 if (control.deviceName() == "gopiv") {
@@ -202,7 +202,7 @@ if (control.deviceName() == "gopiv") {
     // radio-robot-lib's config/robots/gopiv.json, which has always stored the
     // caliper value. Keeping 11.42 here forced a different slip for the same
     // robot in the two files, which read like a disagreement and was not one.
-    diffDrive.setTrackWidth(11.36)
+    applyGeometry(11.36, 0.956)   // records the pair -- see geometry.ts
     // REFINED 2026-09-17 by calc (Calibrate C, test/calibratec.ts) on the
     // alternating iron cross: b = 11.879 cm, so slip = 11.36/11.879 = 0.9563,
     // a 0.45% correction to the 0.957 calt gave. (On the old 11.42 anchor the
@@ -228,7 +228,7 @@ if (control.deviceName() == "gopiv") {
     // decimals is all the firmware can hold. That rounding moves b by 0.03%,
     // against a 0.14% run-to-run spread -- below the noise, and written out at
     // the value that will actually survive rather than one that silently won't.
-    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.956)
+    // (slip 0.956 applied by applyGeometry above)
 }
 
 if (control.deviceName() == "vevov") {
@@ -326,7 +326,7 @@ if (control.deviceName() == "vevov") {
     // outside-to-outside span. With the true width the slip falls to
     // 111.6/116.2 = 0.96 -- back inside config.proto's legal {0} u [0.5, 1.0],
     // which the old baked 1.1013 violated outright.
-    diffDrive.setTrackWidth(11.16)
+    applyGeometry(11.16, 0.969)   // records the pair -- see geometry.ts
     // MEASURED 2026-09-17 by calc on the alternating iron cross: b = 11.516 cm,
     // so slip = 11.16/11.516 = 0.969, a 0.94% correction to the 0.96 above.
     // Fifteen single-revolution runs; the numbers and the caveats are in
@@ -352,7 +352,7 @@ if (control.deviceName() == "vevov") {
     // revolutions per run gave 11.602, 11.051 and 13.93 cm -- that last one a
     // mean gap of 52.3 deg for a true 45, which is missed transitions, not
     // scatter. Those three runs are discarded and are not in the 15.
-    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.969)
+    // (slip 0.969 applied by applyGeometry above)
     // NOTE: the straddle lever arm (CALJ_LEVER, calibratej.ts) is deliberately
     // NOT set here. vevov's sensor bar is much shorter than gopiv's ~17cm but
     // has not been measured, and guessing it would put a wrong number into the
@@ -414,7 +414,7 @@ if (control.deviceName() == "tigez") {
     // CALIPER track width, 114.4 mm (Eric, 2026-09-17), replacing the compiled
     // 114.2 anchor this line used to carry -- see gopiv's block for why the
     // caliper pair is the one worth storing.
-    diffDrive.setTrackWidth(11.44)
+    applyGeometry(11.44, 0.971)   // records the pair -- see geometry.ts
     // SUPERSEDES calt's 11.647, measured 2026-09-17 by calc on the alternating
     // iron cross: three runs at 70 deg/s gave b = 11.808, 11.732, 11.792 cm,
     // mean 11.777, sd 0.040 (0.34%). So slip = 11.44/11.777 = 0.971.
@@ -436,7 +436,7 @@ if (control.deviceName() == "tigez") {
     // revolution against gopiv's ~0.5 and tovez's ~1.3. That ordering held on
     // all three robots, which is what retired the earlier guess that the sd was
     // the hand-cut tape's own sector irregularity -- it is pivot quality.
-    diffDrive.setConfigValue(ConfigField.RotationalSlip, 0.971)
+    // (slip 0.971 applied by applyGeometry above)
 }
 
 //radio.setGroup(11)
@@ -458,9 +458,13 @@ diffDrive.emitLine(RADIO_ADDRESS.length == 2
 // seven registered names ever arrived. v1.20260913.1 makes a reply line wait
 // for room, so the list is complete again. If you ever pin an OLDER extension,
 // keep this image to seven RUN verbs or the later ones vanish from the list.
-diffDrive.emitLine("boot verbs: calj[:cm] calc[:edges] caljhome[:cm]"
-    + " caltune calbtune calzeta wiretune bargray barref"
-    + " turn[:deg] nudge[:l:r:ticks] square circle")
+// FOUR VERBS, and the list is the spec. calj measures distance on the
+// eye-shaped field, calc measures rotation on the iron cross, square and circle
+// are the demo drives. Everything else was unregistered 2026-09-18 so the
+// console has exactly two calibrations to present and no near-misses beside
+// them. Plain driving now goes through the console's own MOVE_X rather than a
+// `turn`/`nudge` RUN verb, which is why those are gone too.
+diffDrive.emitLine("boot verbs: calj[:cm] calc[:edges] square circle")
 diffDrive.emitLine("boot buttons: A=pick program  B=run it")
 
 

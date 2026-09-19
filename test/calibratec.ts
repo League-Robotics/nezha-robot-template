@@ -290,6 +290,11 @@ function runCalibrateC(edgesWanted: number) {
         f = epStr(f, "why", "too few usable gaps; centre the robot on the cross")
         epPush(f + "}")
         epFlush()
+        // PUT THE GEOMETRY BACK, on the failure path as much as the success one.
+        // A run that bailed still overwrote trackWidth and rotational_slip with
+        // the anchor, and leaving them there hands back a mis-calibrated robot
+        // with nothing on screen to say so.
+        restoreGeometry()
         basic.showIcon(IconNames.No)
         return
     }
@@ -312,8 +317,15 @@ function runCalibrateC(edgesWanted: number) {
     // division itself.
     let r = epObj("calc.result")
     r = epNum(r, "b", bTrue, 3)
-    r = epNum(r, "tw", CC_TRACK, 2)
-    r = epNum(r, "slip_at_tw", slipTrue, 4)
+    // tw is THIS ROBOT'S OWN track width, recorded by boot.ts through
+    // applyGeometry() (geometry.ts) -- not the anchor. slip is tw/b against it,
+    // so it is the value to store, and a consumer no longer has to cross into
+    // radio-robot-lib's config JSON to find a caliper number. anchor_tw is
+    // emitted too so the arithmetic stays checkable from the line alone.
+    r = epNum(r, "tw", bootTrackWidth(), 2)
+    r = epNum(r, "slip", bootTrackWidth() / bTrue, 4)
+    r = epNum(r, "anchor_tw", CC_TRACK, 2)
+    r = epNum(r, "slip_at_anchor", slipTrue, 4)
     r = epNum(r, "slope", slope, 4)
     r = epNum(r, "gaps", grandN, 0)
     r = epNum(r, "anchor_b", bAnchor, 3)
@@ -335,6 +347,14 @@ function runCalibrateC(edgesWanted: number) {
     q = epNum(q, "spin", CC_SPIN, 0)
     q = epNum(q, "wheel", wheel, 2)
     epPush(q + "}")
+    // RESTORE BEFORE THE FINAL FLUSH, so the robot is already correct by the
+    // time a consumer sees .result and acts on it. Without this, calc left the
+    // anchor in the robot and the only way back was a reflash -- `SET
+    // rotational_slip` cannot undo it, because trackwidth is not a settable
+    // config field over the wire.
+    restoreGeometry()
+    epPush(epNum(epObj("calc.restored"), "tw", bootTrackWidth(), 2)
+        + ",\"slip\":" + lineRound(bootSlip(), 4) + "}")
     epFlush()
     basic.showIcon(IconNames.Yes)
 }

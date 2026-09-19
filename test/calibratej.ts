@@ -720,110 +720,20 @@ function caljTuneReport() {
         + " maxsteer=" + CALJ_BACK_MAX_STEER)
 }
 
-diffDrive.onRun("caltune", function (arg) {
-    CALJ_SPEED = runNumber(0, CALJ_SPEED)
-    CALJ_KP = runNumber(1, CALJ_KP)
-    CALJ_MAX_STEER = runNumber(2, CALJ_MAX_STEER)
-    CALJ_DEADBAND = runNumber(3, CALJ_DEADBAND)
-    CALJ_LEVER = runNumber(4, CALJ_LEVER)
-    caljTuneReport()
-})
-diffDrive.runSignature("caltune",
-    "(speed:number,kp:number,maxsteer:number,dead:number,lever:number)")
-
-diffDrive.onRun("calbtune", function (arg) {
-    CALJ_BACK_KP = runNumber(0, CALJ_BACK_KP)
-    CALJ_BACK_KH = runNumber(1, CALJ_BACK_KH)
-    CALJ_BACK_KI = runNumber(2, CALJ_BACK_KI)
-    CALJ_BACK_SPEED = runNumber(3, CALJ_BACK_SPEED)
-    CALJ_BACK_MAX_STEER = runNumber(4, CALJ_BACK_MAX_STEER)
-    caljTuneReport()
-})
-diffDrive.runSignature("calbtune",
-    "(kp:number,kh:number,ki:number,speed:number,maxsteer:number)")
-
-// Set Kp from a TARGET DAMPING at the current arm and speed: Kp = v*(2*zeta/L)^2.
-// This is the verb for a robot whose arm differs from gopiv's. It carries the
-// geometry across so a short arm behaves like a long one, instead of
-// rediscovering a gain by trial and error on every new chassis.
-diffDrive.onRun("calzeta", function (arg) {
-    const want = runNumber(0, 1)
-    if (CALJ_LEVER <= 0 || want <= 0) {
-        diffDrive.emitLine("CALJ:tune refused zeta=" + want + " lever=" + CALJ_LEVER)
-        return
-    }
-    const t = 2 * want / CALJ_LEVER
-    CALJ_KP = CALJ_SPEED * t * t
-    diffDrive.emitLine("CALJ:tune kp=" + lineRound(CALJ_KP, 3) + " chosen for zeta="
-        + want + " at lever=" + CALJ_LEVER + "cm speed=" + CALJ_SPEED)
-    caljTuneReport()
-})
-diffDrive.runSignature("calzeta", "(zeta:number=1)")
-
-// Re-wire a motor AT RUNTIME, so a wiring hypothesis costs a wire command
-// instead of a 90-second reflash.
+// ---- REGISTERED VERBS ----------------------------------------------------
+// ONLY calj. The wire-tuning verbs (caltune, calbtune, calzeta, wiretune), the
+// sensor dumps (bargray, barref) and the return-to-start helper (caljhome) were
+// all unregistered 2026-09-18, when the image was cut to the four verbs the
+// console needs: square, circle, calj, calc.
 //
-// MEASURED vevov 2026-09-17: the boot guard derived from vevov.json
-// (left_port 2, right_port 1, fwd_sign_right -1) drives STRAIGHT correctly but
-// turns the WRONG WAY -- `turn 20` reported odom +21.67 deg while the camera
-// measured -18.26. Straight-right-but-rotation-mirrored is the signature of
-// left and right being exchanged: equal wheel speeds are identical under a
-// swap, and only a differential reveals it.
+// WHAT THAT COSTS, so it is a decision and not an accident: the gains below
+// stay `let` and are still tunable IN SOURCE, but no longer over the wire. The
+// reason they were wire-tunable was robots hosted on a Raspberry Pi that cannot
+// be reflashed from the bench -- and that is not hypothetical, two of those Pis
+// (nada, null) went down this same afternoon. If a gain needs changing on a
+// robot nobody can flash, re-register caltune rather than guessing.
 //
-// That is fatal to calj specifically, and it is not a gain problem. With the
-// steering sign inverted every correction drives the error outward, which is
-// exactly what the failed run showed: err 0.6 -> 1.2 -> 3.6 with steer pinned
-// at the clamp, diverging monotonically rather than oscillating.
-//
-// side: 0 = left, 1 = right.  port: 1..4 = M1..M4.  dir: 1 = forward,
-// 2 = reversed. Reports the resulting geometry so a trial is self-documenting.
-diffDrive.onRun("wiretune", function (arg) {
-    const side = runNumber(0, 0)
-    const port = runNumber(1, 1)
-    const dir = runNumber(2, 1)
-    diffDrive.configureMotor(
-        side == 1 ? MotorSide.Right : MotorSide.Left,
-        port == 4 ? MotorPort.M4 : port == 3 ? MotorPort.M3
-            : port == 2 ? MotorPort.M2 : MotorPort.M1,
-        dir == 2 ? MotorDirection.Reversed : MotorDirection.Forward)
-    diffDrive.emitLine("CALJ:wire side=" + (side == 1 ? "right" : "left")
-        + " port=M" + port + " dir=" + (dir == 2 ? "reversed" : "forward"))
-})
-diffDrive.runSignature("wiretune", "(side:number,port:number,dir:number)")
-
+// caljTuneReport() is kept and still called from the start of a run, so the
+// gains a run used are always in its own log.
 diffDrive.onRun("calj", function (arg) { runCalibrateJ(runNumber(0, CALJ_TRUE_CM)) })
 diffDrive.runSignature("calj", "(cm:number=90.5)")
-
-diffDrive.onRun("caljhome", function (arg) { caljHome(runNumber(0, 0)) })
-diffDrive.runSignature("caljhome", "(cm:number=0)")
-
-// Report the thresholded bits AND the four raw reflectance values side by side,
-// without moving. The bits alone are ambiguous: a set bit means "dark", which is
-// either tape under the channel or a threshold set wrong, and those need
-// completely different fixes. The gray values separate them -- on uniform white
-// paper all four should read close together, whatever the bits say.
-diffDrive.onRun("bargray", function (arg) {
-    diffDrive.emitLine("CALJ:bar=" + caljBar(linetrack.lineBits())
-        + " gray=" + linetrack.grayOf(0) + "," + linetrack.grayOf(1)
-        + "," + linetrack.grayOf(2) + "," + linetrack.grayOf(3))
-})
-diffDrive.runSignature("bargray", "()")
-
-// The learned per-channel references beside a live reading, so a gray value can
-// be judged rather than guessed at. Each channel is compared against its OWN
-// learned line/background pair, so a single global threshold does not describe
-// the sensor and two channels reading the same gray can disagree on the bit.
-// If a channel's line and background references sit close together, that
-// channel has nothing to discriminate with and will flicker.
-diffDrive.onRun("barref", function (arg) {
-    diffDrive.emitLine("CALJ:ref line=" + linetrack.refOf(0, false) + ","
-        + linetrack.refOf(1, false) + "," + linetrack.refOf(2, false) + ","
-        + linetrack.refOf(3, false))
-    diffDrive.emitLine("CALJ:ref bkgd=" + linetrack.refOf(0, true) + ","
-        + linetrack.refOf(1, true) + "," + linetrack.refOf(2, true) + ","
-        + linetrack.refOf(3, true))
-    diffDrive.emitLine("CALJ:bar=" + caljBar(linetrack.lineBits())
-        + " gray=" + linetrack.grayOf(0) + "," + linetrack.grayOf(1)
-        + "," + linetrack.grayOf(2) + "," + linetrack.grayOf(3))
-})
-diffDrive.runSignature("barref", "()")
