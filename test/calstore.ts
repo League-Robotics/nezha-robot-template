@@ -53,6 +53,80 @@ function calStoredNumber(key: string): number {
     return v > 0 ? v : 0
 }
 
+// ---- HOW MANY RUNS IS THIS NUMBER? --------------------------------------
+//
+// A single calwheels run is not a precise estimate of anything. MEASURED on
+// vevov: sd 0.16% across four runs with the long sensor arm (0.7839, 0.7822,
+// 0.7817, 0.7843), and sd 0.43% across seven before the arm was lengthened,
+// with individual samples spanning 0.7800 to 0.7896 -- 1.2% between the
+// extremes. Boot on one of those at random and the robot is a few tenths of a
+// percent off its own mean.
+//
+// That was harmless while a result went only to the wire, where a human read it
+// next to six others. It is not harmless now: a stored value BEATS the compiled
+// per-robot block at boot, so one noisy run outranks a number somebody arrived
+// at deliberately from several. Raised by the session calibrating vevov, with
+// the samples above to back it.
+//
+// What this does about it is REPORT, not average. Every run's value is still
+// what the robot runs on -- pressing B and having it take effect is the whole
+// point of the button menu -- but the store also keeps how many runs there have
+// been since the last clear, and their range. So `calshow` can distinguish a
+// single sample from a considered one, and a student or a console can see the
+// spread rather than infer precision the number does not have.
+//
+// NOT AVERAGED, deliberately, and this is the open question rather than a
+// settled answer: a mean would fold a run against the wrong course length into
+// the value permanently, and the student most likely to mis-measure is the one
+// least likely to know to clear it. A visible n and range lets a person decide;
+// an invisible mean decides for them.
+//
+// Four keys per calibration, short because the settings key space is small.
+const CAL_STAT_N = ".n"
+const CAL_STAT_SUM = ".s"
+const CAL_STAT_LO = ".l"
+const CAL_STAT_HI = ".h"
+const CAL_STAT_WHEEL = "cw"   // calwheels, mm/deg
+const CAL_STAT_TURN = "ct"    // calturn, rotational slip
+
+function calStatAdd(prefix: string, v: number) {
+    const n = calStoredNumber(prefix + CAL_STAT_N)
+    const sum = calStoredNumber(prefix + CAL_STAT_SUM)
+    const lo = calStoredNumber(prefix + CAL_STAT_LO)
+    const hi = calStoredNumber(prefix + CAL_STAT_HI)
+    settings.writeNumber(prefix + CAL_STAT_N, n + 1)
+    settings.writeNumber(prefix + CAL_STAT_SUM, sum + v)
+    settings.writeNumber(prefix + CAL_STAT_LO, n < 1 || v < lo ? v : lo)
+    settings.writeNumber(prefix + CAL_STAT_HI, n < 1 || v > hi ? v : hi)
+}
+
+function calStatRuns(prefix: string): number { return calStoredNumber(prefix + CAL_STAT_N) }
+function calStatLo(prefix: string): number { return calStoredNumber(prefix + CAL_STAT_LO) }
+function calStatHi(prefix: string): number { return calStoredNumber(prefix + CAL_STAT_HI) }
+
+// The mean of every run since the last clear -- reported, never applied. It is
+// the number a person should probably adopt once they have three or four runs,
+// which is a judgement this file does not make for them.
+function calStatMean(prefix: string): number {
+    const n = calStatRuns(prefix)
+    return n > 0 ? calStoredNumber(prefix + CAL_STAT_SUM) / n : 0
+}
+
+// Spread as a percentage of the mean, which is the form the number is worth
+// reading in: 1.2% is a robot that needs more runs, 0.16% is one that does not.
+function calStatSpreadPct(prefix: string): number {
+    const mean = calStatMean(prefix)
+    if (mean <= 0 || calStatRuns(prefix) < 2) return 0
+    return (calStatHi(prefix) - calStatLo(prefix)) * 100 / mean
+}
+
+function calStatClear(prefix: string) {
+    settings.remove(prefix + CAL_STAT_N)
+    settings.remove(prefix + CAL_STAT_SUM)
+    settings.remove(prefix + CAL_STAT_LO)
+    settings.remove(prefix + CAL_STAT_HI)
+}
+
 function calStoredWheel(): number { return calStoredNumber(CAL_KEY_WHEEL) }
 function calStoredTrack(): number { return calStoredNumber(CAL_KEY_TRACK) }
 function calStoredSlip(): number { return calStoredNumber(CAL_KEY_SLIP) }
@@ -68,6 +142,7 @@ function calHasTurn(): boolean { return calStoredTrack() > 0 && calStoredSlip() 
 function calSaveWheel(mmPerDeg: number) {
     diffDrive.setWheelCalibration(mmPerDeg)
     settings.writeNumber(CAL_KEY_WHEEL, mmPerDeg)
+    calStatAdd(CAL_STAT_WHEEL, mmPerDeg)
 }
 
 // The pair goes through applyGeometry() (geometry.ts) rather than straight at
@@ -79,6 +154,10 @@ function calSaveTurn(trackCm: number, slip: number) {
     applyGeometry(trackCm, slip)
     settings.writeNumber(CAL_KEY_TRACK, trackCm)
     settings.writeNumber(CAL_KEY_SLIP, slip)
+    // The slip carries the run-to-run statistics, not the track width: the
+    // track width is a caliper measurement passed through unchanged, so it has
+    // no spread of its own to report.
+    calStatAdd(CAL_STAT_TURN, slip)
 }
 
 // Called from boot.ts AFTER the per-robot block, so a stored calibration BEATS
@@ -102,6 +181,9 @@ function calBootLine(): string {
         + " wheel=" + (calHasWheel() ? "" + lineRound(calStoredWheel(), 4) : "-")
         + " tw=" + (calHasTurn() ? "" + lineRound(calStoredTrack(), 2) : "-")
         + " slip=" + (calHasTurn() ? "" + lineRound(calStoredSlip(), 4) : "-")
+        // runs, because a one-run calibration and a four-run one look identical
+        // otherwise and are not equally trustworthy.
+        + " runs=" + calStatRuns(CAL_STAT_WHEEL) + "/" + calStatRuns(CAL_STAT_TURN)
 }
 
 // THE READ-BACK VERB. The console's calibrate menu asks for this and turns it
@@ -130,6 +212,27 @@ function emitStoredCalibration() {
     r = epNum(r, "live_tw", bootTrackWidth(), 2)
     r = epNum(r, "live_slip", bootSlip(), 4)
     epPush(r + "}")
+
+    // HOW GOOD IS THAT NUMBER. Separate object because it answers a different
+    // question from `what is stored`, and a consumer may reasonably show one
+    // without the other. runs=1 is the case worth drawing attention to: it is
+    // not wrong, it is just one sample of something with a measured spread.
+    //
+    // mean is what to adopt once there are three or four runs. It is REPORTED
+    // and never applied -- see calstore.ts's note on why this store does not
+    // average behind a student's back.
+    let p = epObj("calstore.runs")
+    p = epNum(p, "wheel_runs", calStatRuns(CAL_STAT_WHEEL), 0)
+    p = epNum(p, "wheel_mean", calStatMean(CAL_STAT_WHEEL), 4)
+    p = epNum(p, "wheel_lo", calStatLo(CAL_STAT_WHEEL), 4)
+    p = epNum(p, "wheel_hi", calStatHi(CAL_STAT_WHEEL), 4)
+    p = epNum(p, "wheel_spread", calStatSpreadPct(CAL_STAT_WHEEL), 2)
+    p = epNum(p, "turn_runs", calStatRuns(CAL_STAT_TURN), 0)
+    p = epNum(p, "turn_mean", calStatMean(CAL_STAT_TURN), 4)
+    p = epNum(p, "turn_lo", calStatLo(CAL_STAT_TURN), 4)
+    p = epNum(p, "turn_hi", calStatHi(CAL_STAT_TURN), 4)
+    p = epNum(p, "turn_spread", calStatSpreadPct(CAL_STAT_TURN), 2)
+    epPush(p + "}")
     epFlush()
 }
 
@@ -141,6 +244,10 @@ function clearStoredCalibration() {
     settings.remove(CAL_KEY_WHEEL)
     settings.remove(CAL_KEY_TRACK)
     settings.remove(CAL_KEY_SLIP)
+    // The run statistics go too. Leaving them would report four runs behind a
+    // value that no longer exists, which is worse than reporting none.
+    calStatClear(CAL_STAT_WHEEL)
+    calStatClear(CAL_STAT_TURN)
     epPush(epStr(epObj("calstore.cleared"), "why", "asked") + "}")
     epFlush()
 }
