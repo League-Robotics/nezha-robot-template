@@ -1,6 +1,14 @@
-// calibratej.ts — Calibrate J: wheel travel per shaft degree, measured over a
+// calibratej.ts — calwheels: wheel travel per shaft degree, measured over a
 // straddled run between two lines.
-// Menu picture: two uprights joined by a bar, or RUN calj [cm]
+// Menu picture: two uprights joined by a bar, or RUN calwheels [cm]
+//
+// NAMED calwheels SINCE 2026-09-18. It was `calj` ("Calibrate J") and the
+// file keeps that name, along with the CALJ_ constant prefix, because
+// renaming those buys nothing and breaks every capture log and config note
+// that cites them. What had to change is the WIRE name: a fleet of letters
+// (calx, cala, call, calt, calj, calc) is unreadable to anyone who did not
+// write them, and two of those letters had already been mixed up in
+// conversation the same day. The verb now says what it measures.
 //
 // SETUP. The "eye" field: two parallel lines across the robot's path (start and
 // finish) joined by a single stripe running between them, down the middle. The
@@ -230,7 +238,7 @@ function caljEdge(bits: number): number {
 
 function runCalibrateJ(trueCm: number) {
     diffDrive.setWheelCalibration(CALJ_BASELINE)
-    diffDrive.emitLine("CALJ:begin true=" + trueCm + "cm baseline=" + CALJ_BASELINE
+    diffDrive.emitLine("CALWHEELS:begin true=" + trueCm + "cm baseline=" + CALJ_BASELINE
         + "mm/deg speed=" + CALJ_SPEED + " kp=" + CALJ_KP
         + " dead=" + CALJ_DEADBAND + " aim=" + lineRound(caljTarget(), 2) + "cm")
 
@@ -238,7 +246,7 @@ function runCalibrateJ(trueCm: number) {
     if (atStart != 0) {
         // Terminal outcomes are JSON too, so a consumer has ONE contract: a
         // run ends in exactly one of calj.result or calj.fail.
-        epPush(epStr(epStr(epObj("calj.fail"), "why", "not on clear white"),
+        epPush(epStr(epStr(epObj("calwheels.fail"), "why", "not on clear white"),
             "bar", caljBar(atStart)) + "}")
         epFlush()
         basic.showIcon(IconNames.No)
@@ -278,7 +286,7 @@ function runCalibrateJ(trueCm: number) {
             if (bits == CALJ_ALL) {
                 xA = (lastX + x) / 2
                 phase = 2
-                diffDrive.emitLine("CALJ:start line at=" + lineRound(xA, 2) + "cm")
+                diffDrive.emitLine("CALWHEELS:start line at=" + lineRound(xA, 2) + "cm")
             } else if (x >= CALJ_HUNT_CM) {
                 bailed = "no start line within " + CALJ_HUNT_CM + "cm (bar=" + caljBar(bits) + ")"
                 break
@@ -288,7 +296,7 @@ function runCalibrateJ(trueCm: number) {
             // trigger it on the start line itself.
             if ((bits & CALJ_OUTER) == 0 || x - xA >= CALJ_PHASE2_CLEAR) {
                 phase = 3
-                diffDrive.emitLine("CALJ:straddling from=" + lineRound(x, 2)
+                diffDrive.emitLine("CALWHEELS:straddling from=" + lineRound(x, 2)
                     + "cm bar=" + caljBar(bits))
             }
         } else {
@@ -322,7 +330,7 @@ function runCalibrateJ(trueCm: number) {
             if (bits == CALJ_ALL) {
                 midTicks++
                 if (midTicks == 1) {
-                    diffDrive.emitLine("CALJ:mid-field line at "
+                    diffDrive.emitLine("CALWHEELS:mid-field line at "
                         + lineRound(x - xA, 1) + "cm -- holding course, not the finish")
                 }
                 if (midTicks >= CALJ_MID_MAX) {
@@ -401,7 +409,7 @@ function runCalibrateJ(trueCm: number) {
 
             trackTick++
             if (trackTick % CALJ_TRK_EVERY == 0) {
-                diffDrive.emitLine("CALJ:trk x=" + lineRound(x - xA, 1)
+                diffDrive.emitLine("CALWHEELS:trk x=" + lineRound(x - xA, 1)
                     + "cm bar=" + caljBar(bits) + " err=" + lineRound(err, 2)
                     + " steer=" + lineRound(steer, 2))
             }
@@ -462,7 +470,7 @@ function runCalibrateJ(trueCm: number) {
     diffDrive.stop()
 
     if (phase != 4) {
-        epPush(epNum(epStr(epObj("calj.fail"), "why",
+        epPush(epNum(epStr(epObj("calwheels.fail"), "why",
             bailed.length > 0 ? bailed : "drive ended early"), "phase", phase, 0) + "}")
         epFlush()
         basic.showIcon(IconNames.No)
@@ -481,7 +489,7 @@ function runCalibrateJ(trueCm: number) {
         || measured > trueCm * (1 + CALJ_TOL_FRAC)) {
         // This guard exists because the same failure once reported a 778 mm
         // wheel on gopiv as though it were a measurement.
-        let bad = epObj("calj.fail")
+        let bad = epObj("calwheels.fail")
         bad = epStr(bad, "why", "measured distance is nowhere near true")
         bad = epNum(bad, "measured", measured, 2)
         bad = epNum(bad, "true", trueCm, 2)
@@ -510,7 +518,7 @@ function runCalibrateJ(trueCm: number) {
     // diameter is the same number as a wheel, for checking against a ruler by
     // eye -- a wrong run shows up there first (a bad start once produced a
     // 778 mm wheel). The quality object is what says whether to believe it.
-    let r = epObj("calj.result")
+    let r = epObj("calwheels.result")
     r = epNum(r, "calib", corrected, 4)
     r = epNum(r, "diameter", diameter, 2)
     r = epNum(r, "measured", measured, 2)
@@ -524,7 +532,7 @@ function runCalibrateJ(trueCm: number) {
     // gap, where its position is unobservable; acq is how long it took to find
     // the stripe at all. bias is the steady wheel differential needed to hold
     // the line -- a direct readout of how mismatched the two wheels are.
-    let q = epObj("calj.quality")
+    let q = epObj("calwheels.quality")
     q = epNum(q, "rms", rms, 2)
     q = epNum(q, "mean", meanAbs, 2)
     q = epNum(q, "max", maxAbs, 2)
@@ -537,7 +545,7 @@ function runCalibrateJ(trueCm: number) {
     epPush(q + "}")
 
     // Where the two triggers actually fired, for a run that looks wrong.
-    let w = epObj("calj.span")
+    let w = epObj("calwheels.span")
     w = epNum(w, "start", xA, 2)
     w = epNum(w, "finish", xB, 2)
     epPush(w + "}")
@@ -562,7 +570,7 @@ function runCalibrateJ(trueCm: number) {
 // could be one; the same (1 - CALJ_TOL_FRAC) bound the forward leg arms on.
 // Pass 0 (the default) on a field with nothing between the two ends.
 function caljHome(minCm: number) {
-    diffDrive.emitLine("CALJ:home reverse PID kp=" + CALJ_BACK_KP + " kh=" + CALJ_BACK_KH
+    diffDrive.emitLine("CALWHEELS:home reverse PID kp=" + CALJ_BACK_KP + " kh=" + CALJ_BACK_KH
         + " ki=" + CALJ_BACK_KI + " speed=" + CALJ_BACK_SPEED + "cm/s")
     diffDrive.resetPose()
     let stage = linetrack.lineBits() == CALJ_ALL ? 0 : 1
@@ -616,7 +624,7 @@ function caljHome(minCm: number) {
                 blindRun++
                 if (blindRun >= CALJ_BACK_BLIND_MAX) {
                     diffDrive.stop()
-                    diffDrive.emitLine("CALJ:home fail lost the stripe for " + blindRun
+                    diffDrive.emitLine("CALWHEELS:home fail lost the stripe for " + blindRun
                         + " ticks at " + lineRound(x, 1) + "cm -- stopping, not guessing")
                     basic.showIcon(IconNames.No)
                     return
@@ -650,7 +658,7 @@ function caljHome(minCm: number) {
 
             trk++
             if (trk % CALJ_TRK_EVERY == 0) {
-                diffDrive.emitLine("CALJ:hometrk x=" + lineRound(x, 1) + "cm bar="
+                diffDrive.emitLine("CALWHEELS:hometrk x=" + lineRound(x, 1) + "cm bar="
                     + caljBar(bits) + " err=" + lineRound(err, 2)
                     + " h=" + lineRound(diffDrive.heading(), 1)
                     + " steer=" + lineRound(steer, 2))
@@ -659,14 +667,14 @@ function caljHome(minCm: number) {
 
         if (x >= CALJ_BACK_MAX) {
             diffDrive.stop()
-            diffDrive.emitLine("CALJ:home fail no line within " + CALJ_BACK_MAX
+            diffDrive.emitLine("CALWHEELS:home fail no line within " + CALJ_BACK_MAX
                 + "cm (bar=" + caljBar(bits) + ")")
             basic.showIcon(IconNames.No)
             return
         }
         if (control.millis() - startedAt > CALJ_MAX_SECS * 1000) {
             diffDrive.stop()
-            diffDrive.emitLine("CALJ:home fail timed out at " + lineRound(x, 1) + "cm")
+            diffDrive.emitLine("CALWHEELS:home fail timed out at " + lineRound(x, 1) + "cm")
             basic.showIcon(IconNames.No)
             return
         }
@@ -675,10 +683,10 @@ function caljHome(minCm: number) {
 
     const meanAbs = nTicks > 0 ? sumAbs / nTicks : 0
     const rms = nTicks > 0 ? Math.sqrt(sumSq / nTicks) : 0
-    diffDrive.emitLine("CALJ:home back " + lineRound(Math.abs(diffDrive.poseX()), 2)
+    diffDrive.emitLine("CALWHEELS:home back " + lineRound(Math.abs(diffDrive.poseX()), 2)
         + "cm bar=" + caljBar(linetrack.lineBits())
         + " heading=" + lineRound(diffDrive.heading(), 2) + "deg")
-    diffDrive.emitLine("CALJ:homeosc rms=" + lineRound(rms, 2) + "cm mean="
+    diffDrive.emitLine("CALWHEELS:homeosc rms=" + lineRound(rms, 2) + "cm mean="
         + lineRound(meanAbs, 2) + "cm max=" + lineRound(maxAbs, 2) + "cm crossings="
         + crossings + " blind=" + blindTicks + "/" + nTicks + "ticks")
     basic.showIcon(IconNames.Yes)
@@ -712,10 +720,10 @@ function caljZeta(): number {
 }
 
 function caljTuneReport() {
-    diffDrive.emitLine("CALJ:tune speed=" + CALJ_SPEED + " kp=" + lineRound(CALJ_KP, 3)
+    diffDrive.emitLine("CALWHEELS:tune speed=" + CALJ_SPEED + " kp=" + lineRound(CALJ_KP, 3)
         + " maxsteer=" + CALJ_MAX_STEER + " dead=" + CALJ_DEADBAND
         + " lever=" + CALJ_LEVER + "cm zeta=" + lineRound(caljZeta(), 2))
-    diffDrive.emitLine("CALJ:btune kp=" + CALJ_BACK_KP + " kh=" + CALJ_BACK_KH
+    diffDrive.emitLine("CALWHEELS:btune kp=" + CALJ_BACK_KP + " kh=" + CALJ_BACK_KH
         + " ki=" + CALJ_BACK_KI + " speed=" + CALJ_BACK_SPEED
         + " maxsteer=" + CALJ_BACK_MAX_STEER)
 }
@@ -735,5 +743,5 @@ function caljTuneReport() {
 //
 // caljTuneReport() is kept and still called from the start of a run, so the
 // gains a run used are always in its own log.
-diffDrive.onRun("calj", function (arg) { runCalibrateJ(runNumber(0, CALJ_TRUE_CM)) })
-diffDrive.runSignature("calj", "(cm:number=90.5)")
+diffDrive.onRun("calwheels", function (arg) { runCalibrateJ(runNumber(0, CALJ_TRUE_CM)) })
+diffDrive.runSignature("calwheels", "(cm:number=90.5)")

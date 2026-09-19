@@ -19,8 +19,8 @@ function lineRound(x: number, places: number): number {
 }
 
 // Argument `i` of the current RUN, or `fallback` when it is missing or not a
-// number. Every verb takes its parameters this way, so `RUN calj` and
-// `RUN calj 75.8` are both valid and the signature registered alongside the
+// number. Every verb takes its parameters this way, so `RUN calwheels` and
+// `RUN calwheels 75.8` are both valid and the signature registered alongside the
 // verb is what tells a caller which is which.
 function runNumber(i: number, fallback: number): number {
     const text = diffDrive.runArgText(i)

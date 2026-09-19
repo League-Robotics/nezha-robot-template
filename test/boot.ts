@@ -464,7 +464,7 @@ diffDrive.emitLine(RADIO_ADDRESS.length == 2
 // console has exactly two calibrations to present and no near-misses beside
 // them. Plain driving now goes through the console's own MOVE_X rather than a
 // `turn`/`nudge` RUN verb, which is why those are gone too.
-diffDrive.emitLine("boot verbs: calj[:cm] calc[:edges] square circle")
+diffDrive.emitLine("boot verbs: calwheels[:cm] calturn[:edges] square circle")
 diffDrive.emitLine("boot buttons: A=pick program  B=run it")
 
 
@@ -532,7 +532,7 @@ const PROGRAM_PICTURES = [
 // fleet holds. Keeping a worse method next to a better one invites someone to
 // run it.
 const PROGRAM_RUNS: (() => void)[] = [driveCircle, driveSquare, calibrateJ, calibrateC]
-const PROGRAM_NAMES = ["circle", "square", "calibrate-j", "calibrate-c"]
+const PROGRAM_NAMES = ["circle", "square", "cal-wheels", "cal-turn"]
 
 // -1 is "nothing picked yet", so the first A press lands on the circle.
 let programIndex = -1

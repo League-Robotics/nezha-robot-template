@@ -1,5 +1,8 @@
-// calibratec.ts — Calibrate C: rotation calibration on an alternating iron cross.
-// Menu picture: an X, or RUN calc [edges]
+// calibratec.ts — calturn: rotation calibration on an alternating iron cross.
+// Menu picture: an X, or RUN calturn [edges]
+//
+// NAMED calturn SINCE 2026-09-18, formerly `calc` ("Calibrate C"). The file
+// and the CC_ constants keep the old name -- see calibratej.ts for why.
 //
 // SETUP. An eight-sector "iron cross": four black wedges alternating with four
 // white ones, every sector 45 degrees, boundaries RADIAL from the centre. Put
@@ -181,13 +184,13 @@ function runCalibrateC(edgesWanted: number) {
     const revs = Math.max(1, Math.round((edgesWanted - 2) / 8))
     const edges = 2 + 8 * revs
     if (edges != edgesWanted) {
-        diffDrive.emitLine("CALC:edges " + edgesWanted + " -> " + edges
+        diffDrive.emitLine("CALTURN:edges " + edgesWanted + " -> " + edges
             + " (the window must be a whole number of revolutions: 8n+2)")
     }
     diffDrive.setTrackWidth(CC_TRACK)
     diffDrive.setConfigValue(ConfigField.RotationalSlip, CC_SLIP)
     const bAnchor = CC_TRACK / CC_SLIP
-    diffDrive.emitLine("CALC:begin edges=" + edges + " sector=" + CC_SECTOR
+    diffDrive.emitLine("CALTURN:begin edges=" + edges + " sector=" + CC_SECTOR
         + "deg anchor b=" + lineRound(bAnchor, 3) + "cm (track " + CC_TRACK
         + " slip " + CC_SLIP + ") spin=" + CC_SPIN + "deg/s")
 
@@ -203,7 +206,7 @@ function runCalibrateC(edgesWanted: number) {
     let last = linetrack.lineBits()
     let done = 0
     const startedAt = control.millis()
-    diffDrive.emitLine("CALC:spin start bar=" + caljBar(last)
+    diffDrive.emitLine("CALTURN:spin start bar=" + caljBar(last)
         + " wheel=" + lineRound(wheel, 2) + "cm/s")
 
     diffDrive.setWheelSpeeds(-wheel, wheel)
@@ -221,7 +224,7 @@ function runCalibrateC(edgesWanted: number) {
                     const list = ccEdgesFor(i)
                     if (list.length < edges) {
                         list.push(h)
-                        diffDrive.emitLine("CALC:ch" + i + " n=" + list.length
+                        diffDrive.emitLine("CALTURN:ch" + i + " n=" + list.length
                             + " h=" + lineRound(h, 2) + "deg bar=" + caljBar(bits))
                     }
                 }
@@ -262,7 +265,7 @@ function runCalibrateC(edgesWanted: number) {
         const list = ccEdgesFor(c)
         const mean = ccMeanGap(list)
         if (mean < 0) {
-            epPush(epNum(epStr(epObj("calc.ch"), "state", "unusable"),
+            epPush(epNum(epStr(epObj("calturn.ch"), "state", "unusable"),
                 "i", c, 0) + ",\"n\":" + list.length + "}")
             continue
         }
@@ -273,7 +276,7 @@ function runCalibrateC(edgesWanted: number) {
         chUsable++
         // i=channel, n=transitions, gap=mean gap [deg], sd=its spread,
         // slope=gap/sector.
-        let o = epObj("calc.ch")
+        let o = epObj("calturn.ch")
         o = epNum(o, "i", c, 0)
         o = epNum(o, "n", list.length, 0)
         o = epNum(o, "gap", mean, 3)
@@ -285,7 +288,7 @@ function runCalibrateC(edgesWanted: number) {
     }
 
     if (grandN < 4) {
-        let f = epObj("calc.fail")
+        let f = epObj("calturn.fail")
         f = epNum(f, "gaps", grandN, 0)
         f = epStr(f, "why", "too few usable gaps; centre the robot on the cross")
         epPush(f + "}")
@@ -315,7 +318,7 @@ function runCalibrateC(edgesWanted: number) {
     // `tw` is emitted beside it so the arithmetic is checkable. Nothing in the
     // TS API can read the robot's geometry back, so this run cannot do that
     // division itself.
-    let r = epObj("calc.result")
+    let r = epObj("calturn.result")
     r = epNum(r, "b", bTrue, 3)
     // tw is THIS ROBOT'S OWN track width, recorded by boot.ts through
     // applyGeometry() (geometry.ts) -- not the anchor. slip is tw/b against it,
@@ -338,7 +341,7 @@ function runCalibrateC(edgesWanted: number) {
     // own means, which for a FIXED centre must be zero: every channel sees all
     // eight sectors over a whole revolution, so each mean is 45 exactly.
     // Anything above ~0.2 deg is the centre moving during the run.
-    let q = epObj("calc.quality")
+    let q = epObj("calturn.quality")
     q = epNum(q, "sd", worstSd, 3)
     q = epNum(q, "spread", chUsable > 0 ? chHi - chLo : 0, 3)
     q = epNum(q, "ch", chUsable, 0)
@@ -353,7 +356,7 @@ function runCalibrateC(edgesWanted: number) {
     // rotational_slip` cannot undo it, because trackwidth is not a settable
     // config field over the wire.
     restoreGeometry()
-    epPush(epNum(epObj("calc.restored"), "tw", bootTrackWidth(), 2)
+    epPush(epNum(epObj("calturn.restored"), "tw", bootTrackWidth(), 2)
         + ",\"slip\":" + lineRound(bootSlip(), 4) + "}")
     epFlush()
     basic.showIcon(IconNames.Yes)
@@ -363,5 +366,5 @@ function calibrateC() {
     runCalibrateC(CC_EDGES)
 }
 
-diffDrive.onRun("calc", function (arg) { runCalibrateC(runNumber(0, CC_EDGES)) })
-diffDrive.runSignature("calc", "(edges:number=10)")
+diffDrive.onRun("calturn", function (arg) { runCalibrateC(runNumber(0, CC_EDGES)) })
+diffDrive.runSignature("calturn", "(edges:number=10)")
