@@ -185,6 +185,27 @@ const CALJ_TOL_FRAC = 0.1     // fraction of trueCm the measurement may differ b
 // not a wheel that fits a Nezha.
 const CALJ_DIA_MIN = 40       // mm. Smallest wheel that clears the chassis.
 const CALJ_DIA_MAX = 120      // mm. Stock is ~90 mm (0.7878 mm/deg).
+
+// WHICH FIELD YOU MAY RUN AN UNDECLARED WHEEL ON. The wider bounds have one
+// cost, and it is field-specific rather than general:
+//
+//   MAIN (eye-shaped) playfield -- SAFE. Two full-width crossbars, one at each
+//     end, with the stripe running between them. Overhead frames confirm there
+//     is nothing else full-width to latch onto, so the finish is the only line
+//     the arming test can ever see. vevov calibrates here.
+//
+//   SECONDARY playfield -- DECLARE THE WHEEL. Its stripe is crossed by a third
+//     full-width line at ~37 cm (surveyed 2026-09-17: crossbars at -37.5 and
+//     +38.8, a 1.9 cm line at -0.3). With the wheel undeclared the arming
+//     threshold on a 90.5 cm course falls from 81.5 cm to 68.1 cm, because it
+//     has to admit any course a plausible wheel could report -- and a robot
+//     with much smaller wheels than stock reports that mid-line as high as
+//     83 cm, which is over the threshold. It would then measure half the course
+//     and, the bounds being wide, report it. tigez was calibrated here.
+//
+// Passing `wheel` restores the tight +-CALJ_TOL_FRAC bound and removes the
+// ambiguity, which is why the second argument exists at all rather than the
+// bounds simply being loosened for everyone.
 const CALJ_HUNT_CM = 25       // cm to find the start line before giving up
 const CALJ_EXTRA_CM = 25      // cm of slack past the expected finish
 const CALJ_MAX_SECS = 60      // s for the whole run; a stalled robot stops its
