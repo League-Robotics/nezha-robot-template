@@ -288,16 +288,32 @@ function runCalibrateC(edgesWanted: number) {
     }
 
     if (grandN < 4) {
+        // PUT THE GEOMETRY BACK **BEFORE** ANNOUNCING THE FAILURE. A run that
+        // bailed still overwrote trackWidth and rotational_slip with the anchor,
+        // and leaving them there hands back a mis-calibrated robot.
+        //
+        // The order is the point, and it used to be the other way round: the
+        // fail line went out, was flushed, and only then was the geometry put
+        // back. A consumer acting the instant it saw .fail -- which is what a
+        // one-click console flow does -- was acting on a robot still running the
+        // anchor. The success path has always restored before its final flush,
+        // for exactly this reason; this path disagreed with it.
+        restoreGeometry()
         let f = epObj("calturn.fail")
         f = epNum(f, "gaps", grandN, 0)
         f = epStr(f, "why", "too few usable gaps; centre the robot on the cross")
         epPush(f + "}")
+        // SAY that the geometry went back, rather than leaving a consumer to
+        // take it on trust from a comment in this file. Same event as the
+        // success path, with stored:0 -- the robot is running this pair, but it
+        // measured nothing, so nothing was written to flash and a power cycle
+        // still brings back whatever was there before.
+        let rest = epObj("calturn.restored")
+        rest = epNum(rest, "tw", bootTrackWidth(), 2)
+        rest = epNum(rest, "slip", bootSlip(), 4)
+        rest = epNum(rest, "stored", 0, 0)
+        epPush(rest + "}")
         epFlush()
-        // PUT THE GEOMETRY BACK, on the failure path as much as the success one.
-        // A run that bailed still overwrote trackWidth and rotational_slip with
-        // the anchor, and leaving them there hands back a mis-calibrated robot
-        // with nothing on screen to say so.
-        restoreGeometry()
         basic.showIcon(IconNames.No)
         return
     }
