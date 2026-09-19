@@ -1,9 +1,14 @@
 {
+  "mcpServers": {
     "aprilcam": {
       "command": "aprilcam",
       "args": [
         "mcp"
       ]
+    },
+    "robot-console": {
+      "type": "http",
+      "url": "http://127.0.0.1:4795/mcp"
     }
   }
 }
