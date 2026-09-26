@@ -42,14 +42,6 @@ done
 
 cd "$(dirname "$0")/.."
 
-# test/secrets.ts holds the WiFi credentials and is gitignored, but pxt.json
-# lists it -- a missing file there fails the build outright. Seed it from the
-# tracked template so a fresh clone builds, with an empty password.
-if [ ! -f test/secrets.ts ]; then
-    cp test/secrets.example.ts test/secrets.ts
-    echo "Created test/secrets.ts from the template — set WIFI_PASSWORD in it."
-fi
-
 # Stamp the target robot into the extension's kProfile before compiling.
 #
 # Runs on EVERY build, including the no---robot case, and that is the point:

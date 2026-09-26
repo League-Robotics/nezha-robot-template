@@ -443,7 +443,7 @@ if (control.deviceName() == "tigez") {
 //let channel = "J"
 //radio.setFrequencyBand(parseInt(channel, 36) + 10)
 
-diffDrive.setupWifi(WIFI_SSID, WIFI_PASSWORD)
+diffDrive.enableStoredWifiLink()
 
 // A STORED CALIBRATION BEATS THE COMPILED ONE, and this is the line that makes
 // that true. It runs AFTER every per-robot block above: those are what the
